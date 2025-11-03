@@ -1,6 +1,6 @@
-import Foundation
-import CoreMedia
 import AVFoundation
+import CoreMedia
+import Foundation
 
 // MARK: - Render Progress Delegate
 
@@ -74,7 +74,9 @@ public class RenderService {
     // MARK: - Blank Rush Management
 
     /// Ensure blank rush exists (check or create)
-    private func ensureBlankRush(for parent: OCFParent) async -> (success: Bool, url: URL?, error: String?) {
+    private func ensureBlankRush(for parent: OCFParent) async -> (
+        success: Bool, url: URL?, error: String?
+    ) {
         // Strip extension and add _blankRush.mov (matches BlankRushIntermediate naming)
         let baseName = (parent.ocf.fileName as NSString).deletingPathExtension
         let expectedURL = configuration.blankRushDirectory
@@ -88,7 +90,8 @@ public class RenderService {
                 NSLog("✅ Using existing blank rush: \(expectedURL.lastPathComponent)")
                 return (true, expectedURL, nil)
             } else {
-                NSLog("⚠️ Existing blank rush invalid, regenerating: \(expectedURL.lastPathComponent)")
+                NSLog(
+                    "⚠️ Existing blank rush invalid, regenerating: \(expectedURL.lastPathComponent)")
                 try? FileManager.default.removeItem(at: expectedURL)
             }
         }
@@ -110,7 +113,9 @@ public class RenderService {
     }
 
     /// Generate blank rush for OCF
-    private func generateBlankRush(for parent: OCFParent) async -> (success: Bool, url: URL?, error: String?) {
+    private func generateBlankRush(for parent: OCFParent) async -> (
+        success: Bool, url: URL?, error: String?
+    ) {
         NSLog("📝 Generating blank rush for \(parent.ocf.fileName)")
 
         // Update progress
@@ -232,9 +237,10 @@ public class RenderService {
             let segmentInfo = child.segment
 
             guard let segmentTC = segmentInfo.sourceTimecode,
-                  let segmentFrameRate = segmentInfo.frameRate,
-                  let segmentFrameRateFloat = segmentInfo.frameRateFloat,
-                  let duration = segmentInfo.durationInFrames else {
+                let segmentFrameRate = segmentInfo.frameRate,
+                let segmentFrameRateFloat = segmentInfo.frameRateFloat,
+                let duration = segmentInfo.durationInFrames
+            else {
                 NSLog("⚠️ Segment missing required fields: \(segmentInfo.fileName)")
                 continue
             }
