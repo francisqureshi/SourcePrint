@@ -245,47 +245,40 @@ public class RenderService {
                 continue
             }
 
-            let smpte = SMPTE(
-                fps: Double(segmentFrameRateFloat),
-                dropFrame: segmentInfo.isDropFrame ?? false
-            )
-
-            do {
-                // Calculate relative frames
-                let segmentFrames = try smpte.getFrames(tc: segmentTC)
-                let baseFrames = try smpte.getFrames(tc: baseTC)
-                let relativeFrames = segmentFrames - baseFrames
-
-                // Create CMTime values
-                let startTime = CMTime(
-                    value: CMTimeValue(relativeFrames),
-                    timescale: CMTimeScale(segmentFrameRateFloat)
-                )
-
-                let segmentDuration = CMTime(
-                    seconds: Double(duration) / Double(segmentFrameRateFloat),
-                    preferredTimescale: CMTimeScale(segmentFrameRateFloat * 1000)
-                )
-
-                // Create FFmpeg segment
-                let ffmpegSegment = FFmpegGradedSegment(
-                    url: segmentInfo.url,
-                    startTime: startTime,
-                    duration: segmentDuration,
-                    sourceStartTime: .zero,
-                    isVFXShot: segmentInfo.isVFXShot ?? false,
-                    sourceTimecode: segmentInfo.sourceTimecode,
-                    frameRate: segmentFrameRateFloat,
-                    frameRateRational: segmentFrameRate,
-                    isDropFrame: segmentInfo.isDropFrame
-                )
-
-                ffmpegGradedSegments.append(ffmpegSegment)
-
-            } catch {
-                NSLog("⚠️ SMPTE calculation failed for \(segmentInfo.fileName): \(error)")
+            // 🚀 PERFORMANCE OPTIMIZATION: Use pre-computed frame numbers instead of SMPTE calls
+            guard let segmentStartFrame = segmentInfo.effectiveStartFrame,
+                  let baseStartFrame = parent.ocf.effectiveStartFrame else {
+                NSLog("⚠️ Missing pre-computed frame numbers for segment: \(segmentInfo.fileName)")
                 continue
             }
+
+            let relativeFrames = segmentStartFrame - baseStartFrame
+
+            // Create CMTime values
+            let startTime = CMTime(
+                value: CMTimeValue(relativeFrames),
+                timescale: CMTimeScale(segmentFrameRateFloat)
+            )
+
+            let segmentDuration = CMTime(
+                seconds: Double(duration) / Double(segmentFrameRateFloat),
+                preferredTimescale: CMTimeScale(segmentFrameRateFloat * 1000)
+            )
+
+            // Create FFmpeg segment
+            let ffmpegSegment = FFmpegGradedSegment(
+                url: segmentInfo.url,
+                startTime: startTime,
+                duration: segmentDuration,
+                sourceStartTime: .zero,
+                isVFXShot: segmentInfo.isVFXShot ?? false,
+                sourceTimecode: segmentInfo.sourceTimecode,
+                frameRate: segmentFrameRateFloat,
+                frameRateRational: segmentFrameRate,
+                isDropFrame: segmentInfo.isDropFrame
+            )
+
+            ffmpegGradedSegments.append(ffmpegSegment)
         }
 
         NSLog("📊 Converted \(ffmpegGradedSegments.count) segments for composition")

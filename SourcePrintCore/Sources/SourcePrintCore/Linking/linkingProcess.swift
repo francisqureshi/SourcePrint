@@ -192,11 +192,10 @@ public class SegmentOCFLinker {
         // STEP 2: Detect if this is a consumer camera
         let isConsumerCamera = isConsumerCameraOCF(ocf)
         
-        // STEP 3: Check filename matching
+        // STEP 3: Check filename matching using pre-computed lowercase strings
         let ocfBaseName = (ocf.fileName as NSString).deletingPathExtension
-        let segmentFileName = segment.fileName.lowercased()
-        let ocfFileName = ocfBaseName.lowercased()
-        let hasFilenameMatch = segmentFileName.contains(ocfFileName)
+        let ocfBaseNameLower = ocfBaseName.lowercased()
+        let hasFilenameMatch = segment.fileNameLower.contains(ocfBaseNameLower)
         
         if hasFilenameMatch {
             matchCriteria.append("filename_contains")
@@ -211,10 +210,10 @@ public class SegmentOCFLinker {
                 return nil
             }
             
-            // Additional validation: Check reel name if available
-            if let segmentReel = segment.reelName, 
-               let ocfReel = ocf.reelName,
-               segmentReel.lowercased() == ocfReel.lowercased() {
+            // Additional validation: Check reel name if available (using pre-computed lowercase)
+            if let segmentReelLower = segment.reelNameLower,
+               let ocfReelLower = ocf.reelNameLower,
+               segmentReelLower == ocfReelLower {
                 matchCriteria.append("reel")
             }
             
@@ -255,10 +254,10 @@ public class SegmentOCFLinker {
                 matchCriteria.append("vfx_exemption")
             }
             
-            // Check reel name for additional confidence
-            if let segmentReel = segment.reelName,
-               let ocfReel = ocf.reelName,
-               segmentReel.lowercased() == ocfReel.lowercased() {
+            // Check reel name for additional confidence (using pre-computed lowercase)
+            if let segmentReelLower = segment.reelNameLower,
+               let ocfReelLower = ocf.reelNameLower,
+               segmentReelLower == ocfReelLower {
                 matchCriteria.append("reel")
             }
             

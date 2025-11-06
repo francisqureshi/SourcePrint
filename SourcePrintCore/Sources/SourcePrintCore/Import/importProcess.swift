@@ -49,12 +49,14 @@ public struct MediaFileInfo: Codable {
     public var isVFXShot: Bool?  // VFX shot flag (can be modified by user)
 
     // MARK: - Pre-Computed Fields (Performance Optimization)
-    // Computed once at import to eliminate redundant SMPTE/frame rate calculations
+    // Computed once at import to eliminate redundant SMPTE/frame rate/string conversions
     public let startFrameNumber: Int?  // Frame number from sourceTimecode (via SMPTE)
     public let endFrameNumber: Int?    // Frame number from endTimecode (via SMPTE)
     public let frameRateFloat: Float?  // Float conversion of frameRate (num/den)
+    public let fileNameLower: String   // Lowercase filename for case-insensitive comparisons
+    public let reelNameLower: String?  // Lowercase reel name for case-insensitive comparisons
 
-    public init(fileName: String, url: URL, resolution: CGSize?, displayResolution: CGSize?, sampleAspectRatio: String?, frameRate: AVRational?, sourceTimecode: String?, endTimecode: String?, durationInFrames: Int64?, isDropFrame: Bool?, reelName: String?, isInterlaced: Bool?, fieldOrder: String?, mediaType: MediaType, isVFXShot: Bool? = nil, startFrameNumber: Int? = nil, endFrameNumber: Int? = nil, frameRateFloat: Float? = nil) {
+    public init(fileName: String, url: URL, resolution: CGSize?, displayResolution: CGSize?, sampleAspectRatio: String?, frameRate: AVRational?, sourceTimecode: String?, endTimecode: String?, durationInFrames: Int64?, isDropFrame: Bool?, reelName: String?, isInterlaced: Bool?, fieldOrder: String?, mediaType: MediaType, isVFXShot: Bool? = nil, startFrameNumber: Int? = nil, endFrameNumber: Int? = nil, frameRateFloat: Float? = nil, fileNameLower: String? = nil, reelNameLower: String? = nil) {
         self.fileName = fileName
         self.url = url
         self.resolution = resolution
@@ -75,6 +77,8 @@ public struct MediaFileInfo: Codable {
         self.startFrameNumber = startFrameNumber
         self.endFrameNumber = endFrameNumber
         self.frameRateFloat = frameRateFloat
+        self.fileNameLower = fileNameLower ?? fileName.lowercased()
+        self.reelNameLower = reelNameLower ?? reelName?.lowercased()
     }
 
     // MARK: - Computed Properties
@@ -399,8 +403,13 @@ public class MediaAnalyzer {
             }
         }
 
+        // Pre-compute normalized strings for case-insensitive comparisons
+        let fileName = url.lastPathComponent
+        let fileNameLower = fileName.lowercased()
+        let reelNameLower = reelName?.lowercased()
+
         return MediaFileInfo(
-            fileName: url.lastPathComponent,
+            fileName: fileName,
             url: url,
             resolution: resolution,
             displayResolution: displayResolution,
@@ -417,7 +426,9 @@ public class MediaAnalyzer {
             isVFXShot: nil,
             startFrameNumber: startFrameNumber,
             endFrameNumber: endFrameNumber,
-            frameRateFloat: frameRateFloat
+            frameRateFloat: frameRateFloat,
+            fileNameLower: fileNameLower,
+            reelNameLower: reelNameLower
         )
     }
 
