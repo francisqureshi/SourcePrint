@@ -50,6 +50,9 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     /// Last completed result (for UI observation)
     @Published public private(set) var lastCompletedResult: RenderResult?
 
+    /// Total items at the start of processing (remains constant during the batch)
+    @Published public private(set) var initialTotalItems: Int = 0
+
     /// Task handle for the current processing loop
     private var processingTask: Task<Void, Never>?
 
@@ -109,6 +112,7 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
         isProcessing = true
         completedCount = 0
         failedCount = 0
+        initialTotalItems = queue.count
 
         // Start processing loop
         processingTask = Task { @MainActor in
@@ -136,6 +140,7 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
         if !isProcessing {
             completedCount = 0
             failedCount = 0
+            initialTotalItems = 0
         }
     }
 
