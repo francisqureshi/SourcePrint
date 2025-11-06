@@ -337,11 +337,11 @@ struct LinkingResultsView: View {
         .onChange(of: renderQueueManager.currentItem) { _, item in
             // Update status bar when current item changes
             if let item = item {
-                let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
-                let totalItems = currentIndex + renderQueueManager.queue.count
+                let status = renderQueueManager.getStatus()
+                let currentIndex = status.completedItems + status.failedItems + 1
                 statusBarVM.updateRenderProgress(
                     currentItem: currentIndex,
-                    totalItems: totalItems,
+                    totalItems: status.totalItems,
                     fileName: item.ocfFileName,
                     progress: item.progress
                 )
