@@ -238,7 +238,7 @@ public class RenderService {
 
             guard let segmentTC = segmentInfo.sourceTimecode,
                 let segmentFrameRate = segmentInfo.frameRate,
-                let segmentFrameRateFloat = segmentInfo.frameRateFloat,
+                let segmentFrameRateFloat = segmentInfo.effectiveFrameRateFloat,
                 let duration = segmentInfo.durationInFrames
             else {
                 NSLog("⚠️ Segment missing required fields: \(segmentInfo.fileName)")

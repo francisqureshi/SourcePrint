@@ -233,33 +233,16 @@ public class SegmentOCFLinker {
             
         } else {
             // Professional camera - check timecode
-            
-            // Validate timecode range
-            if let segmentStartTC = segment.sourceTimecode,
-               let segmentEndTC = segment.endTimecode,
-               let ocfStartTC = ocf.sourceTimecode,
-               let ocfEndTC = ocf.endTimecode {
-                
-                let inRange = isSegmentInOCFRange(
-                    segmentStartTimecode: segmentStartTC,
-                    segmentEndTimecode: segmentEndTC,
-                    ocfStartTimecode: ocfStartTC,
-                    ocfEndTimecode: ocfEndTC,
-                    frameRate: segmentFR,
-                    segmentDropFrame: segment.isDropFrame,
-                    ocfDropFrame: ocf.isDropFrame
-                )
-                
-                if !inRange {
-                    // Timecode not in range = no match for professional cameras
-                    return nil
-                }
-                matchCriteria.append("timecode_range")
-            } else {
-                // No timecode for professional camera = no match
+
+            // Validate timecode range using pre-computed frame numbers
+            let inRange = isSegmentInOCFRange(segment: segment, ocf: ocf)
+
+            if !inRange {
+                // Timecode not in range = no match for professional cameras
                 return nil
             }
-            
+            matchCriteria.append("timecode_range")
+
             // Check if this is a VFX shot
             let isVFXShot = segment.isVFX == true
             
@@ -303,45 +286,40 @@ public class SegmentOCFLinker {
         return false
     }
     
-    private func isSegmentInOCFRange(segmentStartTimecode: String, segmentEndTimecode: String, ocfStartTimecode: String, ocfEndTimecode: String, frameRate: AVRational, segmentDropFrame: Bool? = nil, ocfDropFrame: Bool? = nil) -> Bool {
-        // Use SMPTE library for professional timecode handling
-        // Prefer the detected drop frame information, fall back to separator detection
-        let isDropFrame = segmentDropFrame ?? ocfDropFrame ?? 
-                         (segmentStartTimecode.contains(";") || segmentEndTimecode.contains(";") || 
-                          ocfStartTimecode.contains(";") || ocfEndTimecode.contains(";"))
-        
-        let frameRateFloat = Float(frameRate.num) / Float(frameRate.den)
-        let smpte = SMPTE(fps: Double(frameRateFloat), dropFrame: isDropFrame)
-        
-        do {
-            // Convert all timecodes to frame numbers using SMPTE library
-            let segmentStartFrame = try smpte.getFrames(tc: segmentStartTimecode)
-            let segmentEndFrame = try smpte.getFrames(tc: segmentEndTimecode)
-            let ocfStartFrame = try smpte.getFrames(tc: ocfStartTimecode)
-            let ocfEndFrame = try smpte.getFrames(tc: ocfEndTimecode)
-            
-            // Check if entire segment duration falls within OCF range
-            let segmentStartInRange = segmentStartFrame >= ocfStartFrame && segmentStartFrame <= ocfEndFrame
-            let segmentEndInRange = segmentEndFrame >= ocfStartFrame && segmentEndFrame <= ocfEndFrame
-            let entireSegmentInRange = segmentStartInRange && segmentEndInRange
-            
-            if entireSegmentInRange {
-                let dropFrameInfo = isDropFrame ? " (drop frame)" : ""
-                print("    ✅ Segment range \(segmentStartTimecode)-\(segmentEndTimecode) (frames \(segmentStartFrame)-\(segmentEndFrame)) within OCF range \(ocfStartTimecode)-\(ocfEndTimecode) (frames \(ocfStartFrame)-\(ocfEndFrame))\(dropFrameInfo)")
-            } else {
-                let dropFrameInfo = isDropFrame ? " (drop frame)" : ""
-                print("    ❌ Segment range \(segmentStartTimecode)-\(segmentEndTimecode) (frames \(segmentStartFrame)-\(segmentEndFrame)) NOT within OCF range \(ocfStartTimecode)-\(ocfEndTimecode) (frames \(ocfStartFrame)-\(ocfEndFrame))\(dropFrameInfo)")
-            }
-            
-            return entireSegmentInRange
-            
-        } catch let error as SMPTEError {
-            print("    ⚠️ SMPTE timecode error: \(error.localizedDescription)")
-            return false
-        } catch {
-            print("    ⚠️ Unexpected timecode error: \(error)")
+    private func isSegmentInOCFRange(segment: MediaFileInfo, ocf: MediaFileInfo) -> Bool {
+        // 🚀 PERFORMANCE OPTIMIZATION: Use pre-computed frame numbers
+        // This eliminates 8000+ redundant SMPTE conversions during linking
+
+        guard let segmentStartFrame = segment.effectiveStartFrame,
+              let segmentEndFrame = segment.effectiveEndFrame,
+              let ocfStartFrame = ocf.effectiveStartFrame,
+              let ocfEndFrame = ocf.effectiveEndFrame else {
+            print("    ⚠️ Missing frame numbers for range check")
             return false
         }
+
+        // Check if entire segment duration falls within OCF range
+        let segmentStartInRange = segmentStartFrame >= ocfStartFrame && segmentStartFrame <= ocfEndFrame
+        let segmentEndInRange = segmentEndFrame >= ocfStartFrame && segmentEndFrame <= ocfEndFrame
+        let entireSegmentInRange = segmentStartInRange && segmentEndInRange
+
+        // Get drop frame info for logging
+        let isDropFrame = segment.isDropFrame ?? ocf.isDropFrame ?? false
+        let dropFrameInfo = isDropFrame ? " (drop frame)" : ""
+
+        // Use timecode strings for logging (still available)
+        let segmentStartTC = segment.sourceTimecode ?? "?"
+        let segmentEndTC = segment.endTimecode ?? "?"
+        let ocfStartTC = ocf.sourceTimecode ?? "?"
+        let ocfEndTC = ocf.endTimecode ?? "?"
+
+        if entireSegmentInRange {
+            print("    ✅ Segment range \(segmentStartTC)-\(segmentEndTC) (frames \(segmentStartFrame)-\(segmentEndFrame)) within OCF range \(ocfStartTC)-\(ocfEndTC) (frames \(ocfStartFrame)-\(ocfEndFrame))\(dropFrameInfo)")
+        } else {
+            print("    ❌ Segment range \(segmentStartTC)-\(segmentEndTC) (frames \(segmentStartFrame)-\(segmentEndFrame)) NOT within OCF range \(ocfStartTC)-\(ocfEndTC) (frames \(ocfStartFrame)-\(ocfEndFrame))\(dropFrameInfo)")
+        }
+
+        return entireSegmentInRange
     }
     
 }

@@ -48,7 +48,13 @@ public struct MediaFileInfo: Codable {
     public let mediaType: MediaType
     public var isVFXShot: Bool?  // VFX shot flag (can be modified by user)
 
-    public init(fileName: String, url: URL, resolution: CGSize?, displayResolution: CGSize?, sampleAspectRatio: String?, frameRate: AVRational?, sourceTimecode: String?, endTimecode: String?, durationInFrames: Int64?, isDropFrame: Bool?, reelName: String?, isInterlaced: Bool?, fieldOrder: String?, mediaType: MediaType, isVFXShot: Bool? = nil) {
+    // MARK: - Pre-Computed Fields (Performance Optimization)
+    // Computed once at import to eliminate redundant SMPTE/frame rate calculations
+    public let startFrameNumber: Int?  // Frame number from sourceTimecode (via SMPTE)
+    public let endFrameNumber: Int?    // Frame number from endTimecode (via SMPTE)
+    public let frameRateFloat: Float?  // Float conversion of frameRate (num/den)
+
+    public init(fileName: String, url: URL, resolution: CGSize?, displayResolution: CGSize?, sampleAspectRatio: String?, frameRate: AVRational?, sourceTimecode: String?, endTimecode: String?, durationInFrames: Int64?, isDropFrame: Bool?, reelName: String?, isInterlaced: Bool?, fieldOrder: String?, mediaType: MediaType, isVFXShot: Bool? = nil, startFrameNumber: Int? = nil, endFrameNumber: Int? = nil, frameRateFloat: Float? = nil) {
         self.fileName = fileName
         self.url = url
         self.resolution = resolution
@@ -65,6 +71,10 @@ public struct MediaFileInfo: Codable {
         self.mediaType = mediaType
         // Auto-detect VFX from filename if not explicitly set
         self.isVFXShot = isVFXShot
+        // Pre-computed fields (performance optimization)
+        self.startFrameNumber = startFrameNumber
+        self.endFrameNumber = endFrameNumber
+        self.frameRateFloat = frameRateFloat
     }
 
     // MARK: - Computed Properties
@@ -105,37 +115,84 @@ public struct MediaFileInfo: Codable {
     }
 
     /// Frame rate description with precision info and drop frame indication
-    /// Uses direct rational arithmetic for perfect precision
+    /// Uses pre-computed float value to avoid redundant divisions
     public var frameRateDescription: String {
-        guard let frameRate = frameRate else { return "Unknown" }
+        guard let frameRate = frameRate,
+              let floatValue = effectiveFrameRateFloat else { return "Unknown" }
 
         let dropFrameInfo = isDropFrame == true ? " (drop frame)" : ""
-
-        // Convert rational to readable description with exact notation
-        let floatValue = Float(frameRate.num) / Float(frameRate.den)
         let rationalNotation = "\(frameRate.num)/\(frameRate.den)"
 
         return "\(floatValue)fps (\(rationalNotation))\(dropFrameInfo)"
     }
 
-    /// Frame rate as Float for UI calculations and display
-    public var frameRateFloat: Float? {
-        guard let frameRate = frameRate else { return nil }
-        return Float(frameRate.num) / Float(frameRate.den)
-    }
-
     /// Frame rate as Double for SMPTE and precise calculations
+    /// Uses pre-computed float value to avoid redundant divisions
     public var frameRateDouble: Double? {
-        guard let frameRate = frameRate else { return nil }
-        return Double(frameRate.num) / Double(frameRate.den)
+        guard let floatValue = effectiveFrameRateFloat else { return nil }
+        return Double(floatValue)
     }
 
     /// Duration in seconds for display
+    /// Uses pre-computed frame rate to avoid redundant divisions
     public var durationInSeconds: Double? {
         guard let frames = durationInFrames,
               let fps = frameRateDouble,
               fps > 0 else { return nil }
         return Double(frames) / fps
+    }
+
+    // MARK: - Performance Optimization: Effective Frame Numbers with Fallback
+
+    /// Start frame number with fallback for legacy files
+    /// Returns pre-computed value if available, otherwise computes on-the-fly
+    public var effectiveStartFrame: Int? {
+        // Fast path: use pre-computed value (files imported with optimization)
+        if let precomputed = startFrameNumber {
+            return precomputed
+        }
+
+        // Fallback path: compute on-the-fly for legacy .w2 files
+        guard let startTC = sourceTimecode,
+              let fps = effectiveFrameRateFloat,
+              let dropFrame = isDropFrame else {
+            return nil
+        }
+
+        let smpte = SMPTE(fps: Double(fps), dropFrame: dropFrame)
+        return try? smpte.getFrames(tc: startTC)
+    }
+
+    /// End frame number with fallback for legacy files
+    /// Returns pre-computed value if available, otherwise computes on-the-fly
+    public var effectiveEndFrame: Int? {
+        // Fast path: use pre-computed value (files imported with optimization)
+        if let precomputed = endFrameNumber {
+            return precomputed
+        }
+
+        // Fallback path: compute on-the-fly for legacy .w2 files
+        guard let endTC = endTimecode,
+              let fps = effectiveFrameRateFloat,
+              let dropFrame = isDropFrame else {
+            return nil
+        }
+
+        let smpte = SMPTE(fps: Double(fps), dropFrame: dropFrame)
+        return try? smpte.getFrames(tc: endTC)
+    }
+
+    /// Effective frame rate float with fallback for legacy files
+    /// Returns pre-computed value if available, otherwise computes on-the-fly
+    public var effectiveFrameRateFloat: Float? {
+        // Fast path: use pre-computed value (files imported with optimization)
+        if let precomputed = frameRateFloat {
+            return precomputed
+        }
+
+        // Fallback path: compute on-the-fly for legacy .w2 files
+        guard let fps = frameRate else { return nil }
+        return Float(fps.num) / Float(fps.den)
     }
 
     /// Technical summary for display
@@ -176,6 +233,7 @@ public class MediaAnalyzer {
         var displayResolution: CGSize? = nil
         var sampleAspectRatio: String? = nil
         var frameRate: AVRational? = nil
+        var frameRateFloat: Float? = nil  // Pre-computed to avoid redundant divisions
         var sourceTimecode: String? = nil
         var endTimecode: String? = nil
         var durationInFrames: Int64? = nil
@@ -257,21 +315,25 @@ public class MediaAnalyzer {
                         print("    📋 No stream metadata found")
                     }
 
+                    // Pre-compute frame rate float once to avoid redundant divisions during analysis
+                    if let fps = frameRate {
+                        frameRateFloat = Float(fps.num) / Float(fps.den)
+                    }
+
                     // Extract timecode using same approach as ffmpeg script
                     sourceTimecode = extractTimecode(from: fmtCtx)
-                    
+
                     // Detect drop frame from timecode format and frame rate
-                    if let timecode = sourceTimecode, let fps = frameRate {
-                        let floatFps = Float(fps.num) / Float(fps.den)
+                    if let timecode = sourceTimecode, let floatFps = frameRateFloat {
                         isDropFrame = detectDropFrame(timecode: timecode, frameRate: floatFps)
                     }
-                    
+
                     // Calculate end timecode and duration
                     // MXF files often have unreliable frameCount metadata, calculate from duration and framerate
                     if stream.frameCount > 0 {
                         durationInFrames = Int64(stream.frameCount)
                         print("    📊 Using stream frameCount: \(durationInFrames) frames")
-                    } else if let fps = frameRate, stream.duration > 0 {
+                    } else if let floatFps = frameRateFloat, stream.duration > 0 {
                         // For MXF files, duration is often in frame units already, despite timebase
                         // Try direct duration first, then fallback to timebase calculation
                         if stream.timebase.num == 1001 && (stream.timebase.den == 24000 || stream.timebase.den == 30000 || stream.timebase.den == 60000) {
@@ -281,7 +343,6 @@ public class MediaAnalyzer {
                         } else {
                             // Calculate frames from duration and framerate for other cases
                             let timebaseSeconds = Double(stream.duration) * Double(stream.timebase.num) / Double(stream.timebase.den)
-                            let floatFps = Float(fps.num) / Float(fps.den)
                             durationInFrames = Int64(round(timebaseSeconds * Double(floatFps)))
                             print("    📊 Calculated from duration: \(durationInFrames) frames (duration=\(stream.duration) timebase=\(stream.timebase) fps=\(floatFps))")
                         }
@@ -289,9 +350,8 @@ public class MediaAnalyzer {
                         durationInFrames = 0
                         print("    ⚠️ Cannot determine frame count - insufficient duration/framerate info")
                     }
-                    
-                    if let startTC = sourceTimecode, let fps = frameRate, let frames = durationInFrames, frames > 0 {
-                        let floatFps = Float(fps.num) / Float(fps.den)
+
+                    if let startTC = sourceTimecode, let floatFps = frameRateFloat, let frames = durationInFrames, frames > 0 {
                         endTimecode = calculateEndTimecode(startTimecode: startTC, frameRate: floatFps, durationFrames: frames)
                     }
 
@@ -310,6 +370,35 @@ public class MediaAnalyzer {
             print("    ⚠️ FFmpeg analysis failed: \(error) - no media properties available")
         }
 
+        // MARK: - Pre-Compute Frame Numbers
+        // Compute frame numbers once at import to eliminate redundant SMPTE calculations during linking
+        var startFrameNumber: Int? = nil
+        var endFrameNumber: Int? = nil
+
+        // frameRateFloat was already computed during analysis above (or is nil if analysis failed)
+        // No need to recompute here
+
+        // Compute start and end frame numbers using SMPTE
+        if let startTC = sourceTimecode, let fps = frameRateFloat, let dropFrame = isDropFrame {
+            let smpte = SMPTE(fps: Double(fps), dropFrame: dropFrame)
+
+            do {
+                // Convert start timecode to frame number
+                startFrameNumber = try smpte.getFrames(tc: startTC)
+                print("    🎯 Pre-computed startFrameNumber: \(startFrameNumber!) (from \(startTC))")
+
+                // Convert end timecode to frame number if available
+                if let endTC = endTimecode {
+                    endFrameNumber = try smpte.getFrames(tc: endTC)
+                    print("    🎯 Pre-computed endFrameNumber: \(endFrameNumber!) (from \(endTC))")
+                }
+            } catch let error as SMPTEError {
+                print("    ⚠️ Failed to pre-compute frame numbers: \(error.localizedDescription)")
+            } catch {
+                print("    ⚠️ Unexpected error computing frame numbers: \(error)")
+            }
+        }
+
         return MediaFileInfo(
             fileName: url.lastPathComponent,
             url: url,
@@ -324,7 +413,11 @@ public class MediaAnalyzer {
             reelName: reelName,
             isInterlaced: isInterlaced,
             fieldOrder: fieldOrder,
-            mediaType: type
+            mediaType: type,
+            isVFXShot: nil,
+            startFrameNumber: startFrameNumber,
+            endFrameNumber: endFrameNumber,
+            frameRateFloat: frameRateFloat
         )
     }
 
