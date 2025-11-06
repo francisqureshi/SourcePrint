@@ -54,6 +54,7 @@ struct LinkingResultsView: View {
     @ObservedObject var project: ProjectViewModel
     let timelineVisualizationData: [String: TimelineVisualization]
     @EnvironmentObject var projectManager: ProjectManager
+    @EnvironmentObject var statusBarVM: StatusBarViewModel
     var onPerformLinking: (() -> Void)? = nil
     var onGenerateBlankRushes: (() -> Void)? = nil
 
@@ -325,6 +326,27 @@ struct LinkingResultsView: View {
             handleRenderCompleted(result, projectManager: projectManager)
             NSLog("📊 Queue progress: \(renderQueueManager.completedCount) completed, \(renderQueueManager.failedCount) failed")
         }
+        // Wire render queue progress to status bar
+        .onChange(of: renderQueueManager.isProcessing) { _, isProcessing in
+            if !isProcessing && renderQueueManager.queue.isEmpty {
+                // Queue finished
+                let total = renderQueueManager.completedCount + renderQueueManager.failedCount
+                statusBarVM.completeOperation(summary: "Rendered \(total) item\(total == 1 ? "" : "s")")
+            }
+        }
+        .onChange(of: renderQueueManager.currentItem) { _, item in
+            // Update status bar when current item changes
+            if let item = item {
+                let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
+                let totalItems = currentIndex + renderQueueManager.queue.count
+                statusBarVM.updateRenderProgress(
+                    currentItem: currentIndex,
+                    totalItems: totalItems,
+                    fileName: item.ocfFileName,
+                    progress: item.progress
+                )
+            }
+        }
     }
 
     private func expandSelectedCards() {
@@ -510,35 +532,6 @@ struct LinkingResultsView: View {
                             .help("Show Unmatched Items (\(totalUnmatchedItems))")
                             .padding(.trailing)
                         }
-                    }
-
-                    // Batch render progress indicator
-                    if renderQueueManager.isProcessing {
-                        VStack(spacing: 4) {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .controlSize(.small)
-
-                                let status = renderQueueManager.getStatus()
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Batch rendering... (\(status.completedItems)/\(status.totalItems) completed)")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-
-                                    // Show current item progress
-                                    if let currentItem = renderQueueManager.currentItem {
-                                        Text("\(currentItem.ocfFileName): \(currentItem.progress)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary.opacity(0.8))
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                        .background(Color.purple.opacity(0.1))
-                        .cornerRadius(6)
                     }
 
                     // Status line with linking result summary

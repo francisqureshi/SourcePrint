@@ -12,26 +12,15 @@ import UniformTypeIdentifiers
 struct MediaImportTab: View {
     @ObservedObject var project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
+    @EnvironmentObject var statusBarVM: StatusBarViewModel
     @State private var importingOCF = false
     @State private var isAnalyzing = false
-    @State private var analysisProgress = ""
     @State private var selectedOCFFiles: Set<String> = []
     @State private var selectedSegments: Set<String> = []
     @State private var showRemoveOfflineConfirmation = false
     
     var body: some View {
         VStack(spacing: 20) {
-            if isAnalyzing {
-                VStack {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text(analysisProgress)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding()
-            }
-
             // Watch Folder Section
             WatchFolderSection(project: project)
 
@@ -192,21 +181,29 @@ struct MediaImportTab: View {
     
     private func importMediaFiles(urls: [URL], isOCF: Bool) {
         isAnalyzing = true
-        analysisProgress = "Analyzing \(urls.count) file(s)..."
-        
+
+        statusBarVM.updateImportProgress(
+            currentFile: 0,
+            totalFiles: urls.count,
+            fileName: "Starting analysis..."
+        )
+
         Task {
             let mediaFiles = await analyzeMediaFilesInParallel(urls: urls, isOCF: isOCF)
-            
+
             await MainActor.run {
                 if isOCF {
                     project.addOCFFiles(mediaFiles)
                 } else {
                     project.addSegments(mediaFiles)
                 }
-                
+
                 projectManager.saveProject(project)
                 isAnalyzing = false
-                analysisProgress = ""
+
+                // Update status bar with completion
+                statusBarVM.completeOperation(summary: "Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") file\(mediaFiles.count == 1 ? "" : "s")")
+
                 NSLog("✅ Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") files")
             }
         }
@@ -275,14 +272,16 @@ struct MediaImportTab: View {
                 let currentTime = CFAbsoluteTimeGetCurrent()
                 if currentTime - lastUpdateTime >= updateInterval || completedCount == totalCount {
                     lastUpdateTime = currentTime
-                    
+
                     await MainActor.run {
                         let (_, mediaFile) = result
-                        if let mediaFile = mediaFile {
-                            analysisProgress = "Analyzing files... \(completedCount)/\(totalCount) completed - \(mediaFile.fileName)"
-                        } else {
-                            analysisProgress = "Analyzing files... \(completedCount)/\(totalCount) completed"
-                        }
+                        let fileName = mediaFile?.fileName ?? "Unknown file"
+
+                        statusBarVM.updateImportProgress(
+                            currentFile: completedCount,
+                            totalFiles: totalCount,
+                            fileName: fileName
+                        )
                     }
                 }
             }

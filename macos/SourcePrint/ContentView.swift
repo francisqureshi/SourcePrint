@@ -10,21 +10,29 @@ import SourcePrintCore
 
 struct ContentView: View {
     @EnvironmentObject var projectManager: ProjectManager
+    @StateObject private var statusBarVM = StatusBarViewModel()
     @State private var showingNewProject = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
-    
+
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            ProjectSidebar()
-                .environmentObject(projectManager)
-        } detail: {
-            if let currentProject = projectManager.currentProject {
-                ProjectDetailView(project: currentProject)
+        VStack(spacing: 0) {
+            // Main content area
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                ProjectSidebar()
                     .environmentObject(projectManager)
-            } else {
-                WelcomeView()
-                    .environmentObject(projectManager)
+            } detail: {
+                if let currentProject = projectManager.currentProject {
+                    ProjectDetailView(project: currentProject)
+                        .environmentObject(projectManager)
+                        .environmentObject(statusBarVM)
+                } else {
+                    WelcomeView()
+                        .environmentObject(projectManager)
+                }
             }
+
+            // Status bar at bottom
+            StatusBarView(viewModel: statusBarVM)
         }
         .navigationTitle("SourcePrint")
         .toolbar {

@@ -11,67 +11,12 @@ import SourcePrintCore
 struct LinkingTab: View {
     let project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
+    @EnvironmentObject var statusBarVM: StatusBarViewModel
     @State private var isLinking = false
-    @State private var linkingProgress = ""
-    @State private var progressValue: Double = 0.0
-    @State private var progressTotal: Double = 100.0
-    @State private var currentFPS: Double = 0.0
-    @State private var currentClipName: String = ""
-    @State private var currentFileIndex: Int = 0
-    @State private var totalFileCount: Int = 0
     @State private var timelineVisualizationData: [String: TimelineVisualization] = [:]
     
     var body: some View {
         VStack(spacing: 20) {
-            // Progress display when linking
-            if isLinking {
-                VStack(spacing: 8) {
-                    ProgressView(
-                        value: progressValue, 
-                        total: progressTotal,
-                        label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(linkingProgress)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    if totalFileCount > 0 {
-                                        Text("\(currentFileIndex)/\(totalFileCount)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .monospacedDigit()
-                                    }
-                                }
-                                if !currentClipName.isEmpty {
-                                    HStack {
-                                        Text("📎 \(currentClipName)")
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(1)
-                                        Spacer()
-                                        if currentFPS > 0 {
-                                            Text("\(String(format: "%.1f", currentFPS)) fps")
-                                                .font(.caption2)
-                                                .foregroundColor(.secondary)
-                                                .monospacedDigit()
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        currentValueLabel: {
-                            Text("\(Int((progressValue / progressTotal) * 100))%")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    )
-                    .progressViewStyle(.linear)
-                    .animation(.easeInOut(duration: 0.2), value: progressValue)
-                }
-                .padding()
-            }
-            
             // Linking Results Display
             LinkingResultsView(
                 project: project,
@@ -117,18 +62,36 @@ struct LinkingTab: View {
         }
 
         isLinking = true
-        linkingProgress = "Analyzing \(project.model.segments.count) segments against \(project.model.ocfFiles.count) OCF files..."
-        
+        statusBarVM.updateLinkingProgress(
+            currentFile: 0,
+            totalFiles: project.model.ocfFiles.count,
+            fileName: "Starting...",
+            fps: nil,
+            percentage: 0.0
+        )
+
         Task {
             await MainActor.run {
-                linkingProgress = "Running SegmentOCFLinker..."
+                statusBarVM.updateLinkingProgress(
+                    currentFile: 0,
+                    totalFiles: project.model.ocfFiles.count,
+                    fileName: "Analyzing segments...",
+                    fps: nil,
+                    percentage: 0.1
+                )
             }
 
             let linker = SegmentOCFLinker()
             let result = linker.linkSegments(project.model.segments, withOCFParents: project.model.ocfFiles)
 
             await MainActor.run {
-                linkingProgress = "Analyzing frame ownership and overlaps..."
+                statusBarVM.updateLinkingProgress(
+                    currentFile: result.parentsWithChildren.count,
+                    totalFiles: project.model.ocfFiles.count,
+                    fileName: "Processing analysis...",
+                    fps: nil,
+                    percentage: 0.5
+                )
             }
 
             // Preview processing analysis for each OCF parent
@@ -146,6 +109,16 @@ struct LinkingTab: View {
                     }
 
                     await MainActor.run {
+                        let currentIndex = analysisResults.count
+                        let progress = 0.5 + (Double(currentIndex) / Double(result.parentsWithChildren.count) * 0.5)
+                        statusBarVM.updateLinkingProgress(
+                            currentFile: currentIndex,
+                            totalFiles: result.parentsWithChildren.count,
+                            fileName: parent.ocf.fileName,
+                            fps: nil,
+                            percentage: progress
+                        )
+
                         let stats = processingPlan.statistics
                         NSLog("📊 Frame analysis for \(parent.ocf.fileName): \(stats.segmentCount) segments (\(stats.vfxSegmentCount) VFX), \(stats.overlapCount) overlaps")
                     }
@@ -164,12 +137,10 @@ struct LinkingTab: View {
                 timelineVisualizationData = visualizationResults
 
                 isLinking = false
-                linkingProgress = ""
-                progressValue = 0.0
-                currentFPS = 0.0
-                currentClipName = ""
-                currentFileIndex = 0
-                totalFileCount = 0
+
+                // Update status bar with completion
+                statusBarVM.completeOperation(summary: "Linked \(result.ocfParents.count) OCF file\(result.ocfParents.count == 1 ? "" : "s")")
+
                 NSLog("✅ Linking completed: \(result.summary)")
                 NSLog("📊 Analyzed \(analysisResults.count) OCF files for overlaps and VFX priority")
             }
@@ -252,44 +223,41 @@ struct LinkingTab: View {
         }
         
         isLinking = true
-        progressTotal = 100.0
-        totalFileCount = ocfsToProcess.count
-        currentFileIndex = 0
-        
+
         Task {
             let blankRushCreator = BlankRushIntermediate(projectDirectory: project.model.blankRushDirectory.path)
             var allResults: [BlankRushResult] = []
-            
+
             for (index, parent) in ocfsToProcess.enumerated() {
                 await MainActor.run {
-                    currentFileIndex = index + 1
-                    currentClipName = (parent.ocf.fileName as NSString).deletingPathExtension
-                    linkingProgress = "Creating ProRes 4444 blank rush..."
-                    progressValue = 0.0
-                    currentFPS = 0.0
+                    statusBarVM.updateBlankRushProgress(
+                        currentFile: index + 1,
+                        totalFiles: ocfsToProcess.count,
+                        fileName: parent.ocf.fileName,
+                        fps: nil
+                    )
                 }
-                
+
                 // Create single file's linking result for this OCF
                 let singleOCFResult = LinkingResult(
                     ocfParents: [parent],
                     unmatchedSegments: [],
                     unmatchedOCFs: []
                 )
-                
+
                 // Process this single OCF with real progress callback
                 let results = await blankRushCreator.createBlankRushes(from: singleOCFResult) { clipName, current, total, fps in
                     await MainActor.run {
-                        self.currentClipName = clipName
-                        self.progressValue = current
-                        self.progressTotal = total
-                        self.currentFPS = fps
+                        statusBarVM.updateBlankRushProgress(
+                            currentFile: index + 1,
+                            totalFiles: ocfsToProcess.count,
+                            fileName: clipName,
+                            fps: fps
+                        )
                     }
                 }
                 
                 await MainActor.run {
-                    progressValue = 100.0
-                    currentFPS = 0.0
-
                     // Update project status for this file
                     if let result = results.first {
                         if result.success {
@@ -300,22 +268,20 @@ struct LinkingTab: View {
                         allResults.append(result)
                     }
                 }
-                
+
                 // Brief pause between files
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             }
-            
+
             await MainActor.run {
                 projectManager.saveProject(project)
                 isLinking = false
-                linkingProgress = ""
-                progressValue = 0.0
-                currentClipName = ""
-                currentFileIndex = 0
-                totalFileCount = 0
-                currentFPS = 0.0
-                
+
                 let successCount = allResults.filter { $0.success }.count
+
+                // Update status bar with completion
+                statusBarVM.completeOperation(summary: "Generated \(successCount) blank rush\(successCount == 1 ? "" : "es")")
+
                 NSLog("✅ Blank Rush generation completed: \(successCount)/\(allResults.count) successful")
             }
         }

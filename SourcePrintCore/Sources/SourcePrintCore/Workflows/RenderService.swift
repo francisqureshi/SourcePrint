@@ -177,7 +177,7 @@ public class RenderService {
         await notifyProgress(
             ocfFileName: parent.ocf.fileName,
             status: .compositing,
-            message: "Creating composition..."
+            message: "Printing Segments on to Blank Rush..."
         )
 
         // Generate output filename
@@ -247,7 +247,8 @@ public class RenderService {
 
             // 🚀 PERFORMANCE OPTIMIZATION: Use pre-computed frame numbers instead of SMPTE calls
             guard let segmentStartFrame = segmentInfo.effectiveStartFrame,
-                  let baseStartFrame = parent.ocf.effectiveStartFrame else {
+                let baseStartFrame = parent.ocf.effectiveStartFrame
+            else {
                 NSLog("⚠️ Missing pre-computed frame numbers for segment: \(segmentInfo.fileName)")
                 continue
             }
