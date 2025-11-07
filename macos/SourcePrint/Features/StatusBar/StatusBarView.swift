@@ -210,15 +210,10 @@ struct StatusBarView: View {
                         viewModel.onRenderAll?()
                     }
                 }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 13))
-                        Text(renderButtonLabel)
-                            .font(.system(size: 14, weight: .medium))
-                            .monospacedDigit()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(width: 130) // Wide enough for "Render 999"
+                    Text(renderButtonLabel)
+                        .font(.system(size: 14, weight: .medium))
+                        .monospacedDigit()
+                        .frame(minWidth: 100) // Wide enough for "Render 999"
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(accentColor)
