@@ -31,6 +31,10 @@ public struct RenderQueueItem: Identifiable, Equatable {
     public var startTime: Date?
     public var completionTime: Date?
 
+    // Segment-level progress for linear progress bars
+    public var currentSegment: Int?
+    public var totalSegments: Int?
+
     public init(
         id: UUID = UUID(),
         ocfFileName: String,
@@ -38,7 +42,9 @@ public struct RenderQueueItem: Identifiable, Equatable {
         status: RenderStatus = .pending,
         progress: String = "",
         startTime: Date? = nil,
-        completionTime: Date? = nil
+        completionTime: Date? = nil,
+        currentSegment: Int? = nil,
+        totalSegments: Int? = nil
     ) {
         self.id = id
         self.ocfFileName = ocfFileName
@@ -47,6 +53,8 @@ public struct RenderQueueItem: Identifiable, Equatable {
         self.progress = progress
         self.startTime = startTime
         self.completionTime = completionTime
+        self.currentSegment = currentSegment
+        self.totalSegments = totalSegments
     }
 
     public var duration: TimeInterval? {

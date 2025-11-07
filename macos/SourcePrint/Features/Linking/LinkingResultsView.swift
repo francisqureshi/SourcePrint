@@ -242,9 +242,26 @@ struct LinkingResultsView: View {
                 currentItem: currentIndex,
                 totalItems: renderQueueManager.initialTotalItems,
                 fileName: item.ocfFileName,
-                progress: item.progress
+                progress: item.progress,
+                currentSegment: item.currentSegment,
+                totalSegments: item.totalSegments
             )
         }
+    }
+
+    private func handleSegmentProgressChange(_ segmentProgress: SourcePrintCore.SegmentProgress?) {
+        guard let segmentProgress = segmentProgress,
+              let item = renderQueueManager.currentItem else { return }
+
+        let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
+        statusBarVM.updateRenderProgress(
+            currentItem: currentIndex,
+            totalItems: renderQueueManager.initialTotalItems,
+            fileName: item.ocfFileName,
+            progress: item.progress,
+            currentSegment: segmentProgress.current,
+            totalSegments: segmentProgress.total
+        )
     }
 
     // Render queue state is observed automatically via @StateObject
@@ -340,6 +357,9 @@ struct LinkingResultsView: View {
             }
             .onChange(of: renderQueueManager.currentItem) { _, item in
                 handleCurrentItemChange(item)
+            }
+            .onChange(of: renderQueueManager.currentSegmentProgress) { _, segmentProgress in
+                handleSegmentProgressChange(segmentProgress)
             }
             .onChange(of: selectedOCFParents) { _, _ in
                 updateRenderButtonState()
@@ -621,6 +641,7 @@ struct LinkingResultsView: View {
                                 allParents: confidentlyLinkedParents,
                                 currentlyRenderingOCF: currentlyRenderingOCF,
                                 renderProgress: renderQueueManager.currentItem?.ocfFileName == parent.ocf.fileName ? renderQueueManager.currentItem?.progress : nil,
+                                renderSegmentProgress: renderQueueManager.currentItem?.ocfFileName == parent.ocf.fileName ? renderQueueManager.currentSegmentProgress : nil,
                                 onRenderSingle: {
                                     renderSingle(parent: parent)
                                 }

@@ -109,6 +109,12 @@ public class SwiftFFmpegProResCompositor {
     private var totalSegments: Int = 0
     private var completedSegments: Int = 0
 
+    // Percentage-based FPS tracking
+    private var lastPercentage: Double = 0.0
+    private var lastPercentageTimestamp: Double = 0.0
+    private var ocfTotalFrames: Int = 0
+    private var processingStartTime: Double = 0.0
+
     // DTS tracking for monotonicity
     private var lastOutputDTS: Int64 = 0
 
@@ -567,6 +573,12 @@ public class SwiftFFmpegProResCompositor {
         totalSegments = processingPlan.consolidatedRanges.count
         completedSegments = 0
 
+        // Initialize percentage-based FPS tracking
+        ocfTotalFrames = totalFrames
+        lastPercentage = 0.0
+        processingStartTime = CFAbsoluteTimeGetCurrent()
+        lastPercentageTimestamp = processingStartTime
+
         for (rangeIndex, range) in processingPlan.consolidatedRanges.enumerated() {
             // 1. Copy base video from currentFrame to range start if there's a gap
             if currentFrame < range.startFrame {
@@ -625,11 +637,31 @@ public class SwiftFFmpegProResCompositor {
             // Update segment progress
             completedSegments += 1
             let currentSegment = rangeIndex + 1 // 1-based for UI display
-            let overallProgress = String(format: "%.1f%%", (Double(completedSegments) / Double(totalSegments)) * 100)
+            let currentPercentage = (Double(completedSegments) / Double(totalSegments)) * 100
 
-            // Report segment-level progress to UI
+            // Calculate percentage-based FPS
+            let currentTime = CFAbsoluteTimeGetCurrent()
+            let timeDelta = currentTime - lastPercentageTimestamp
+            let percentageDelta = currentPercentage - lastPercentage
+
+            let fps: Double
+            if timeDelta > 0 && percentageDelta > 0 {
+                let framesProcessed = (percentageDelta / 100.0) * Double(ocfTotalFrames)
+                fps = framesProcessed / timeDelta
+            } else {
+                fps = 0
+            }
+
+            // Update tracking for next iteration
+            lastPercentage = currentPercentage
+            lastPercentageTimestamp = currentTime
+
+            let overallProgress = String(format: "%.1f%%", currentPercentage)
+
+            // Report segment-level progress to UI with percentage-based FPS
             await MainActor.run {
-                segmentProgressHandler?(currentSegment, totalSegments, segmentName, overallProgress)
+                let progressWithFPS = "\(overallProgress) @ \(String(format: "%.0f", fps)) fps"
+                segmentProgressHandler?(currentSegment, totalSegments, segmentName, progressWithFPS)
             }
 
             currentFrame = range.endFrame

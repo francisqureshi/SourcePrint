@@ -324,18 +324,37 @@ public class RenderService {
         segmentName: String,
         progress: String
     ) async {
-        // Parse percentage from progress string (e.g., "45.2%")
+        // Parse percentage and FPS from progress string (e.g., "45.2% @ 145 fps")
         let percentage: Double?
-        if let percentValue = Double(progress.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)) {
-            percentage = percentValue
+        var message = "Processing segment \(currentSegment) of \(totalSegments)"
+
+        // Extract percentage (before "@" if present)
+        if let separatorIndex = progress.range(of: " @ ")?.lowerBound {
+            let percentPart = String(progress[..<separatorIndex])
+            let fpsPart = String(progress[progress.index(after: separatorIndex)...])
+
+            // Parse percentage
+            if let percentValue = Double(percentPart.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)) {
+                percentage = percentValue
+            } else {
+                percentage = nil
+            }
+
+            // Include FPS in message
+            message = "Processing segment \(currentSegment) of \(totalSegments) \(fpsPart)"
         } else {
-            percentage = nil
+            // No FPS info, just parse percentage
+            if let percentValue = Double(progress.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)) {
+                percentage = percentValue
+            } else {
+                percentage = nil
+            }
         }
 
         let renderProgress = RenderProgress(
             ocfFileName: ocfFileName,
             status: .compositing,
-            message: "Processing segment \(currentSegment) of \(totalSegments)",
+            message: message,
             percentage: percentage,
             elapsedTime: nil,
             currentSegment: currentSegment,

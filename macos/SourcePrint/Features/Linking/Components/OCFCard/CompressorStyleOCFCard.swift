@@ -24,6 +24,7 @@ struct CompressorStyleOCFCard: View {
     let allParents: [OCFParent]
     let currentlyRenderingOCF: String?  // Global lock to prevent concurrent rendering
     let renderProgress: String?  // Current render progress message
+    let renderSegmentProgress: SourcePrintCore.SegmentProgress?  // Current segment progress
     let onRenderSingle: () -> Void  // Callback to render just this OCF
 
 
@@ -96,6 +97,28 @@ struct CompressorStyleOCFCard: View {
         return Double(percentString)
     }
 
+    /// Progress bar view with segment-based or percentage-based progress
+    private var progressBarView: some View {
+        Group {
+            if let segmentProgress = renderSegmentProgress {
+                // Use segment progress (e.g., 18/41 = 43.9%)
+                ProgressView(value: Double(segmentProgress.current), total: Double(segmentProgress.total))
+                    .progressViewStyle(.linear)
+                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
+            } else if let progress = renderProgress, let percentage = extractPercentage(from: progress) {
+                // Fallback: Extract percentage for determinate progress bar
+                ProgressView(value: percentage, total: 100.0)
+                    .progressViewStyle(.linear)
+                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
+            } else {
+                // Indeterminate progress bar (composition phase)
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
+            }
+        }
+    }
+
     var body: some View {
         cardContent
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -150,20 +173,7 @@ struct CompressorStyleOCFCard: View {
             // Render Progress Bar
             if isRendering, let progress = renderProgress {
                 VStack(spacing: 4) {
-                    // Extract percentage for determinate progress bar
-                    let percentage = extractPercentage(from: progress)
-
-                    if let percent = percentage {
-                        // Determinate progress bar (0-100%)
-                        ProgressView(value: percent, total: 100.0)
-                            .progressViewStyle(.linear)
-                            .scaleEffect(x: 1, y: 0.5, anchor: .center)
-                    } else {
-                        // Indeterminate progress bar (composition phase)
-                        ProgressView()
-                            .progressViewStyle(.linear)
-                            .scaleEffect(x: 1, y: 0.5, anchor: .center)
-                    }
+                    progressBarView
 
                     // Split progress message to show FPS on the right
                     HStack {

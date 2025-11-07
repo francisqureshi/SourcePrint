@@ -147,17 +147,27 @@ class StatusBarViewModel: ObservableObject {
         currentItem: Int,
         totalItems: Int,
         fileName: String,
-        progress: String
+        progress: String,
+        currentSegment: Int? = nil,
+        totalSegments: Int? = nil
     ) {
         currentOperation = .rendering
         statusText = "Rendering... (\(currentItem)/\(totalItems))"
 
-        // Parse progress string if possible (e.g., "45.2%")
-        if let percentValue = parsePercentage(from: progress) {
+        // Calculate progress based on segment data if available
+        if let currentSeg = currentSegment, let totalSeg = totalSegments, totalSeg > 0 {
+            // Use segment progress for linear progress bar
+            progressValue = Double(currentSeg) / Double(totalSeg)
+            isIndeterminate = false
+            NSLog("✅ LINEAR: segment \(currentSeg)/\(totalSeg) = \(progressValue)")
+        } else if let percentValue = parsePercentage(from: progress) {
+            // Fallback: Parse progress string if possible (e.g., "45.2%")
             progressValue = percentValue / 100.0
             isIndeterminate = false
+            NSLog("✅ LINEAR: parsed \(percentValue)%")
         } else {
             isIndeterminate = true
+            NSLog("❌ BOUNCING: currentSegment=\(String(describing: currentSegment)), totalSegments=\(String(describing: totalSegments)), progress='\(progress)'")
         }
 
         detailedInfo = DetailedProgress(

@@ -1,6 +1,19 @@
 import Foundation
 import Combine
 
+// MARK: - Segment Progress
+
+/// Segment-level progress for real-time UI updates
+public struct SegmentProgress: Equatable {
+    public let current: Int
+    public let total: Int
+
+    public init(current: Int, total: Int) {
+        self.current = current
+        self.total = total
+    }
+}
+
 // MARK: - Render Queue Delegate
 
 /// Delegate protocol for render queue events
@@ -52,6 +65,9 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
 
     /// Total items at the start of processing (remains constant during the batch)
     @Published public private(set) var initialTotalItems: Int = 0
+
+    /// Current segment progress (separate published property for real-time UI updates)
+    @Published public private(set) var currentSegmentProgress: SegmentProgress? = nil
 
     /// Task handle for the current processing loop
     private var processingTask: Task<Void, Never>?
@@ -163,6 +179,9 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
             // Get next item
             var item = queue.removeFirst()
             currentItem = item
+
+            // Reset segment progress for new item
+            currentSegmentProgress = nil
 
             // Update status to generatingBlankRush
             item.status = .generatingBlankRush
@@ -278,7 +297,19 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
 
     /// Handle progress updates from RenderService
     public func renderService(_ service: RenderService, didUpdateProgress progress: RenderProgress) {
-        // Update current item with progress details
+        // Update current item with progress details and segment data
+        if var item = currentItem {
+            item.progress = progress.message
+            item.currentSegment = progress.currentSegment
+            item.totalSegments = progress.totalSegments
+            currentItem = item
+        }
+
+        // Publish segment progress separately for real-time UI updates
+        if let currentSeg = progress.currentSegment, let totalSeg = progress.totalSegments {
+            currentSegmentProgress = SegmentProgress(current: currentSeg, total: totalSeg)
+        }
+
         updateCurrentItemStatus(progress.status, progress: progress.message)
 
         // Forward segment-level progress to delegate
