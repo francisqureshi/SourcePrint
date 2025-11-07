@@ -238,6 +238,11 @@ struct LinkingResultsView: View {
     private func handleCurrentItemChange(_ item: SourcePrintCore.RenderQueueItem?) {
         if let item = item {
             let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
+
+            // Calculate total progress including current item
+            let totalProgressFrames = renderQueueManager.cumulativeCompletedFrames +
+                                     renderQueueManager.currentItemFramesProcessed
+
             statusBarVM.updateRenderProgress(
                 currentItem: currentIndex,
                 totalItems: renderQueueManager.initialTotalItems,
@@ -246,7 +251,7 @@ struct LinkingResultsView: View {
                 currentSegment: item.currentSegment,
                 totalSegments: item.totalSegments,
                 totalFrames: renderQueueManager.totalFramesInQueue,
-                completedFrames: renderQueueManager.cumulativeCompletedFrames
+                completedFrames: totalProgressFrames
             )
         }
     }
@@ -256,6 +261,11 @@ struct LinkingResultsView: View {
               let item = renderQueueManager.currentItem else { return }
 
         let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
+
+        // Calculate total progress including current item
+        let totalProgressFrames = renderQueueManager.cumulativeCompletedFrames +
+                                 renderQueueManager.currentItemFramesProcessed
+
         statusBarVM.updateRenderProgress(
             currentItem: currentIndex,
             totalItems: renderQueueManager.initialTotalItems,
@@ -264,7 +274,7 @@ struct LinkingResultsView: View {
             currentSegment: segmentProgress.current,
             totalSegments: segmentProgress.total,
             totalFrames: renderQueueManager.totalFramesInQueue,
-            completedFrames: renderQueueManager.cumulativeCompletedFrames
+            completedFrames: totalProgressFrames
         )
     }
 

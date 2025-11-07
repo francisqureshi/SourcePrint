@@ -85,6 +85,10 @@ public struct RenderProgress: Equatable {
     public let totalSegments: Int?
     public let segmentName: String?
 
+    // Frame-level progress within current item (for incremental progress bar)
+    public let currentItemFramesProcessed: Int64?
+    public let currentItemTotalFrames: Int64?
+
     public init(
         ocfFileName: String,
         status: RenderStatus,
@@ -93,7 +97,9 @@ public struct RenderProgress: Equatable {
         elapsedTime: TimeInterval? = nil,
         currentSegment: Int? = nil,
         totalSegments: Int? = nil,
-        segmentName: String? = nil
+        segmentName: String? = nil,
+        currentItemFramesProcessed: Int64? = nil,
+        currentItemTotalFrames: Int64? = nil
     ) {
         self.ocfFileName = ocfFileName
         self.status = status
@@ -103,6 +109,8 @@ public struct RenderProgress: Equatable {
         self.currentSegment = currentSegment
         self.totalSegments = totalSegments
         self.segmentName = segmentName
+        self.currentItemFramesProcessed = currentItemFramesProcessed
+        self.currentItemTotalFrames = currentItemTotalFrames
     }
 }
 

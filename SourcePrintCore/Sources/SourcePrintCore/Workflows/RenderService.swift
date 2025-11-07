@@ -145,7 +145,9 @@ public class RenderService {
             await self.notifyProgress(
                 ocfFileName: parent.ocf.fileName,
                 status: .generatingBlankRush,
-                message: "Creating blank rush... \(Int(percentage))% @ \(Int(fps)) fps"
+                message: "Creating blank rush... \(Int(percentage))% @ \(Int(fps)) fps",
+                currentItemFramesProcessed: Int64(current),
+                currentItemTotalFrames: Int64(total)
             )
         }
 
@@ -206,7 +208,7 @@ public class RenderService {
         let compositor = SwiftFFmpegProResCompositor()
 
         // Wire up segment progress callback
-        compositor.segmentProgressHandler = { [weak self] currentSegment, totalSegments, segmentName, progress in
+        compositor.segmentProgressHandler = { [weak self] currentSegment, totalSegments, segmentName, progress, framesProcessed, totalFrames in
             guard let self = self else { return }
             Task { @MainActor in
                 await self.notifySegmentProgress(
@@ -214,7 +216,9 @@ public class RenderService {
                     currentSegment: currentSegment,
                     totalSegments: totalSegments,
                     segmentName: segmentName,
-                    progress: progress
+                    progress: progress,
+                    framesProcessed: framesProcessed,
+                    totalFrames: totalFrames
                 )
             }
         }
@@ -304,13 +308,21 @@ public class RenderService {
 
     /// Notify delegate of progress update
     @MainActor
-    private func notifyProgress(ocfFileName: String, status: RenderStatus, message: String) async {
+    private func notifyProgress(
+        ocfFileName: String,
+        status: RenderStatus,
+        message: String,
+        currentItemFramesProcessed: Int64? = nil,
+        currentItemTotalFrames: Int64? = nil
+    ) async {
         let progress = RenderProgress(
             ocfFileName: ocfFileName,
             status: status,
             message: message,
             percentage: nil,
-            elapsedTime: nil
+            elapsedTime: nil,
+            currentItemFramesProcessed: currentItemFramesProcessed,
+            currentItemTotalFrames: currentItemTotalFrames
         )
 
         delegate?.renderService(self, didUpdateProgress: progress)
@@ -322,7 +334,9 @@ public class RenderService {
         currentSegment: Int,
         totalSegments: Int,
         segmentName: String,
-        progress: String
+        progress: String,
+        framesProcessed: Int64? = nil,
+        totalFrames: Int? = nil
     ) async {
         // Parse percentage and FPS from progress string (e.g., "45.2% @ 145 fps")
         let percentage: Double?
@@ -359,7 +373,9 @@ public class RenderService {
             elapsedTime: nil,
             currentSegment: currentSegment,
             totalSegments: totalSegments,
-            segmentName: segmentName
+            segmentName: segmentName,
+            currentItemFramesProcessed: framesProcessed,
+            currentItemTotalFrames: totalFrames.map { Int64($0) }
         )
 
         await MainActor.run {

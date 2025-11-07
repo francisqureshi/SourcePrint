@@ -102,8 +102,8 @@ public class SwiftFFmpegProResCompositor {
     public var completionHandler: ((Result<URL, Error>) -> Void)?
 
     // Segment-level progress callback for detailed UI updates
-    // Reports: (currentSegment, totalSegments, segmentName, progress)
-    public var segmentProgressHandler: ((Int, Int, String, String) -> Void)?
+    // Reports: (currentSegment, totalSegments, segmentName, progress, framesProcessed, totalFrames)
+    public var segmentProgressHandler: ((Int, Int, String, String, Int64, Int) -> Void)?
 
     // Progress tracking for timeline processing
     private var totalSegments: Int = 0
@@ -658,10 +658,23 @@ public class SwiftFFmpegProResCompositor {
 
             let overallProgress = String(format: "%.1f%%", currentPercentage)
 
-            // Report segment-level progress to UI with percentage-based FPS
+            // Calculate actual frames processed from completed segments
+            let framesProcessedInCurrentItem = calculateFramesFromSegments(
+                processingPlan: processingPlan,
+                completedSegments: completedSegments
+            )
+
+            // Report segment-level progress to UI with percentage-based FPS and frame counts
             await MainActor.run {
                 let progressWithFPS = "\(overallProgress) @ \(String(format: "%.0f", fps)) fps"
-                segmentProgressHandler?(currentSegment, totalSegments, segmentName, progressWithFPS)
+                segmentProgressHandler?(
+                    currentSegment,
+                    totalSegments,
+                    segmentName,
+                    progressWithFPS,
+                    framesProcessedInCurrentItem,
+                    totalFrames
+                )
             }
 
             currentFrame = range.endFrame
@@ -866,6 +879,20 @@ public class SwiftFFmpegProResCompositor {
         // Convert time to frame using precise rational arithmetic
         let fps = Double(frameRate.num) / Double(frameRate.den)
         return Int(round(seconds * fps))
+    }
+
+    // MARK: - Frame Calculation
+
+    /// Calculate frames processed based on completed segments
+    private func calculateFramesFromSegments(
+        processingPlan: ProcessingPlan,
+        completedSegments: Int
+    ) -> Int64 {
+        var frames: Int64 = 0
+        for i in 0..<min(completedSegments, processingPlan.consolidatedRanges.count) {
+            frames += Int64(processingPlan.consolidatedRanges[i].frameCount)
+        }
+        return frames
     }
 
     // MARK: - Progress Updates

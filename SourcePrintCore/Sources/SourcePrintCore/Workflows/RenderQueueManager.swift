@@ -75,6 +75,9 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     /// Cumulative frames completed so far (for frame-based progress)
     @Published public private(set) var cumulativeCompletedFrames: Int64 = 0
 
+    /// Frames processed within current item (for incremental progress bar)
+    @Published public private(set) var currentItemFramesProcessed: Int64 = 0
+
     /// Task handle for the current processing loop
     private var processingTask: Task<Void, Never>?
 
@@ -201,8 +204,9 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
             var item = queue.removeFirst()
             currentItem = item
 
-            // Reset segment progress for new item
+            // Reset progress tracking for new item
             currentSegmentProgress = nil
+            currentItemFramesProcessed = 0
 
             // Update status to generatingBlankRush
             item.status = .generatingBlankRush
@@ -330,6 +334,11 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
             item.currentSegment = progress.currentSegment
             item.totalSegments = progress.totalSegments
             currentItem = item
+        }
+
+        // Update current item frame progress for incremental progress bar
+        if let framesProcessed = progress.currentItemFramesProcessed {
+            currentItemFramesProcessed = framesProcessed
         }
 
         // Publish segment progress separately for real-time UI updates
