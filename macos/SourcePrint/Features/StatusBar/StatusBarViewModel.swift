@@ -149,33 +149,53 @@ class StatusBarViewModel: ObservableObject {
         fileName: String,
         progress: String,
         currentSegment: Int? = nil,
-        totalSegments: Int? = nil
+        totalSegments: Int? = nil,
+        totalFrames: Int64? = nil,
+        completedFrames: Int64? = nil
     ) {
         currentOperation = .rendering
-        statusText = "Rendering... (\(currentItem)/\(totalItems))"
 
-        // Calculate progress based on segment data if available
-        if let currentSeg = currentSegment, let totalSeg = totalSegments, totalSeg > 0 {
-            // Use segment progress for linear progress bar
-            progressValue = Double(currentSeg) / Double(totalSeg)
+        // Calculate progress value and percentage for display
+        let calculatedPercentage: Double
+
+        // Priority 1: Use frame-based progress if available
+        if let total = totalFrames, let completed = completedFrames, total > 0 {
+            progressValue = Double(completed) / Double(total)
+            calculatedPercentage = progressValue * 100
             isIndeterminate = false
-            NSLog("✅ LINEAR: segment \(currentSeg)/\(totalSeg) = \(progressValue)")
-        } else if let percentValue = parsePercentage(from: progress) {
-            // Fallback: Parse progress string if possible (e.g., "45.2%")
-            progressValue = percentValue / 100.0
-            isIndeterminate = false
-            NSLog("✅ LINEAR: parsed \(percentValue)%")
-        } else {
-            isIndeterminate = true
-            NSLog("❌ BOUNCING: currentSegment=\(String(describing: currentSegment)), totalSegments=\(String(describing: totalSegments)), progress='\(progress)'")
+            NSLog("✅ FRAME-BASED: \(completed)/\(total) frames = \(String(format: "%.1f", calculatedPercentage))%")
         }
+        // Priority 2: Use segment-based progress
+        else if let currentSeg = currentSegment, let totalSeg = totalSegments, totalSeg > 0 {
+            progressValue = Double(currentSeg) / Double(totalSeg)
+            calculatedPercentage = progressValue * 100
+            isIndeterminate = false
+            NSLog("✅ SEGMENT-BASED: segment \(currentSeg)/\(totalSeg) = \(String(format: "%.1f", calculatedPercentage))%")
+        }
+        // Priority 3: Parse percentage from progress string
+        else if let percentValue = parsePercentage(from: progress) {
+            progressValue = percentValue / 100.0
+            calculatedPercentage = percentValue
+            isIndeterminate = false
+            NSLog("✅ PARSED: \(percentValue)%")
+        }
+        // Priority 4: Fall back to item-based
+        else {
+            progressValue = Double(currentItem - 1) / Double(totalItems)
+            calculatedPercentage = progressValue * 100
+            isIndeterminate = false
+            NSLog("✅ ITEM-BASED: item \(currentItem)/\(totalItems) = \(String(format: "%.1f", calculatedPercentage))%")
+        }
+
+        // Status text: Item count + percentage
+        statusText = "Rendering job \(currentItem) of \(totalItems) (\(String(format: "%.0f", calculatedPercentage))%)"
 
         detailedInfo = DetailedProgress(
             fileName: fileName,
             currentItem: currentItem,
             totalItems: totalItems,
             fps: nil,
-            percentage: progress,
+            percentage: String(format: "%.0f%%", calculatedPercentage),
             timeRemaining: nil,
             additionalInfo: nil
         )

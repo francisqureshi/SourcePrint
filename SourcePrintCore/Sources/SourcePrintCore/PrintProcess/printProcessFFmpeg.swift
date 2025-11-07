@@ -636,7 +636,7 @@ public class SwiftFFmpegProResCompositor {
 
             // Update segment progress
             completedSegments += 1
-            let currentSegment = rangeIndex + 1 // 1-based for UI display
+            let currentSegment = rangeIndex + 1  // 1-based for UI display
             let currentPercentage = (Double(completedSegments) / Double(totalSegments)) * 100
 
             // Calculate percentage-based FPS

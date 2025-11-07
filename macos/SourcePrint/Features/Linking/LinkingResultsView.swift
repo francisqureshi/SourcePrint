@@ -244,7 +244,9 @@ struct LinkingResultsView: View {
                 fileName: item.ocfFileName,
                 progress: item.progress,
                 currentSegment: item.currentSegment,
-                totalSegments: item.totalSegments
+                totalSegments: item.totalSegments,
+                totalFrames: renderQueueManager.totalFramesInQueue,
+                completedFrames: renderQueueManager.cumulativeCompletedFrames
             )
         }
     }
@@ -260,7 +262,9 @@ struct LinkingResultsView: View {
             fileName: item.ocfFileName,
             progress: item.progress,
             currentSegment: segmentProgress.current,
-            totalSegments: segmentProgress.total
+            totalSegments: segmentProgress.total,
+            totalFrames: renderQueueManager.totalFramesInQueue,
+            completedFrames: renderQueueManager.cumulativeCompletedFrames
         )
     }
 

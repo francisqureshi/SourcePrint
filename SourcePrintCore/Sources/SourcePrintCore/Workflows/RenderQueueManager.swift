@@ -69,6 +69,12 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     /// Current segment progress (separate published property for real-time UI updates)
     @Published public private(set) var currentSegmentProgress: SegmentProgress? = nil
 
+    /// Total frames across all items in queue (for frame-based progress)
+    @Published public private(set) var totalFramesInQueue: Int64 = 0
+
+    /// Cumulative frames completed so far (for frame-based progress)
+    @Published public private(set) var cumulativeCompletedFrames: Int64 = 0
+
     /// Task handle for the current processing loop
     private var processingTask: Task<Void, Never>?
 
@@ -129,6 +135,21 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
         completedCount = 0
         failedCount = 0
         initialTotalItems = queue.count
+
+        // Calculate total frames for frame-based progress
+        cumulativeCompletedFrames = 0
+        totalFramesInQueue = queue.reduce(0) { total, item in
+            if let frames = item.ocfParent.ocf.durationInFrames {
+                return total + frames
+            }
+            return total
+        }
+
+        if totalFramesInQueue > 0 {
+            NSLog("📊 Total frames to process: \(totalFramesInQueue)")
+        } else {
+            NSLog("⚠️ No frame count data available, using item-based progress")
+        }
 
         // Start processing loop
         processingTask = Task { @MainActor in
@@ -243,6 +264,12 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
             updateCurrentItemStatus(.completed, progress: "Render completed")
         } else {
             updateCurrentItemStatus(.failed, progress: result.error ?? "Unknown error")
+        }
+
+        // Update cumulative frame count (whether success or failure)
+        if let frames = item.ocfParent.ocf.durationInFrames {
+            cumulativeCompletedFrames += frames
+            NSLog("📊 Completed frames: \(cumulativeCompletedFrames)/\(totalFramesInQueue)")
         }
 
         return result

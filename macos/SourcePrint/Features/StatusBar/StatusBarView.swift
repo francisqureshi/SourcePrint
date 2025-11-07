@@ -56,7 +56,7 @@ struct StatusBarView: View {
             // Center: Progress Indicator
             if viewModel.currentOperation != .idle {
                 progressIndicator
-                    .frame(width: 200)
+                    .frame(width: 1000)
             }
 
             Spacer()
