@@ -161,10 +161,90 @@ struct LinkingResultsView: View {
         renderQueueManager.startProcessing()
     }
 
+    private func renderSelected() {
+        let selectedOCFs = confidentlyLinkedParents.filter { parent in
+            selectedOCFParents.contains(parent.ocf.fileName)
+        }.filter { parent in
+            !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
+        }
+
+        NSLog("🎬 Starting batch render for %d selected OCFs", selectedOCFs.count)
+
+        renderQueueManager.addToQueue(selectedOCFs)
+        renderQueueManager.startProcessing()
+    }
+
     private func renderSingle(parent: OCFParent) {
         NSLog("🎬 Starting single render for: %@", parent.ocf.fileName)
         renderQueueManager.addToQueue([parent])
         renderQueueManager.startProcessing()
+    }
+
+    private func updateRenderButtonState() {
+        // Count renderable OCFs (excluding offline)
+        let renderableOCFs = confidentlyLinkedParents.filter { parent in
+            !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
+        }
+
+        // Count selected OCFs that are also renderable
+        let selectedRenderable = renderableOCFs.filter { parent in
+            selectedOCFParents.contains(parent.ocf.fileName)
+        }
+
+        // Count modified OCFs
+        let modifiedOCFs = confidentlyLinkedParents.filter { parent in
+            parent.children.contains { child in
+                project.model.segmentModificationDates[child.segment.fileName] != nil
+            }
+        }
+
+        // Update status bar state
+        statusBarVM.totalRenderableCount = renderableOCFs.count
+        statusBarVM.selectedRenderCount = selectedRenderable.count
+        statusBarVM.modifiedRenderCount = modifiedOCFs.count
+    }
+
+    private func setupView() {
+        // Configure RenderQueueManager with project directories
+        let configuration = RenderConfiguration(
+            blankRushDirectory: project.model.blankRushDirectory,
+            outputDirectory: project.model.outputDirectory,
+            proResProfile: "4"
+        )
+        renderQueueManager.configure(with: configuration)
+
+        // Set up render button callbacks
+        statusBarVM.onRenderAll = renderAll
+        statusBarVM.onRenderSelected = renderSelected
+        statusBarVM.onRenderModified = renderModified
+
+        // Initial state update
+        updateRenderButtonState()
+    }
+
+    private func handleRenderCompletedChange(_ result: RenderResult?) {
+        guard let result = result else { return }
+        handleRenderCompleted(result, projectManager: projectManager)
+        NSLog("📊 Queue progress: \(renderQueueManager.completedCount) completed, \(renderQueueManager.failedCount) failed")
+    }
+
+    private func handleProcessingChange(_ isProcessing: Bool) {
+        if !isProcessing && renderQueueManager.queue.isEmpty {
+            let total = renderQueueManager.completedCount + renderQueueManager.failedCount
+            statusBarVM.completeOperation(summary: "Rendered \(total) item\(total == 1 ? "" : "s")")
+        }
+    }
+
+    private func handleCurrentItemChange(_ item: SourcePrintCore.RenderQueueItem?) {
+        if let item = item {
+            let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
+            statusBarVM.updateRenderProgress(
+                currentItem: currentIndex,
+                totalItems: renderQueueManager.initialTotalItems,
+                fileName: item.ocfFileName,
+                progress: item.progress
+            )
+        }
     }
 
     // Render queue state is observed automatically via @StateObject
@@ -230,9 +310,57 @@ struct LinkingResultsView: View {
     // - renderOCFInQueue() -> RenderService.composeVideo()
 
     var body: some View {
+        mainContent
+            .focusable()
+            .focusEffectDisabled()
+            .onKeyPress(.rightArrow) {
+                expandSelectedCards()
+                return .handled
+            }
+            .onKeyPress(.leftArrow) {
+                collapseSelectedCards()
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                handleDownArrow()
+                return .handled
+            }
+            .onKeyPress(.upArrow) {
+                handleUpArrow()
+                return .handled
+            }
+            .onAppear {
+                setupView()
+            }
+            .onChange(of: renderQueueManager.lastCompletedResult) { _, result in
+                handleRenderCompletedChange(result)
+            }
+            .onChange(of: renderQueueManager.isProcessing) { _, isProcessing in
+                handleProcessingChange(isProcessing)
+            }
+            .onChange(of: renderQueueManager.currentItem) { _, item in
+                handleCurrentItemChange(item)
+            }
+            .onChange(of: selectedOCFParents) { _, _ in
+                updateRenderButtonState()
+            }
+            .onChange(of: confidentlyLinkedParents.count) { _, _ in
+                updateRenderButtonState()
+            }
+    }
+
+    private var mainContent: some View {
         Group {
             if linkingResult == nil {
-                VStack {
+                noResultsView
+            } else {
+                linkingResultsContent
+            }
+        }
+    }
+
+    private var noResultsView: some View {
+        VStack {
                     // Action buttons even when no results
                     HStack {
                         Text("Linking")
@@ -288,64 +416,6 @@ struct LinkingResultsView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                linkingResultsContent
-            }
-        }
-        .focusable()
-        .focusEffectDisabled()
-        .onKeyPress(.rightArrow) {
-            expandSelectedCards()
-            return .handled
-        }
-        .onKeyPress(.leftArrow) {
-            collapseSelectedCards()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            handleDownArrow()
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            handleUpArrow()
-            return .handled
-        }
-        .onAppear {
-            // Configure RenderQueueManager with project directories
-            let configuration = RenderConfiguration(
-                blankRushDirectory: project.model.blankRushDirectory,
-                outputDirectory: project.model.outputDirectory,
-                proResProfile: "4"
-            )
-            renderQueueManager.configure(with: configuration)
-        }
-        .onChange(of: renderQueueManager.lastCompletedResult) { _, result in
-            // Update project status when a render completes
-            guard let result = result else { return }
-
-            handleRenderCompleted(result, projectManager: projectManager)
-            NSLog("📊 Queue progress: \(renderQueueManager.completedCount) completed, \(renderQueueManager.failedCount) failed")
-        }
-        // Wire render queue progress to status bar
-        .onChange(of: renderQueueManager.isProcessing) { _, isProcessing in
-            if !isProcessing && renderQueueManager.queue.isEmpty {
-                // Queue finished
-                let total = renderQueueManager.completedCount + renderQueueManager.failedCount
-                statusBarVM.completeOperation(summary: "Rendered \(total) item\(total == 1 ? "" : "s")")
-            }
-        }
-        .onChange(of: renderQueueManager.currentItem) { _, item in
-            // Update status bar when current item changes
-            if let item = item {
-                let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
-                statusBarVM.updateRenderProgress(
-                    currentItem: currentIndex,
-                    totalItems: renderQueueManager.initialTotalItems,
-                    fileName: item.ocfFileName,
-                    progress: item.progress
-                )
-            }
-        }
     }
 
     private func expandSelectedCards() {
@@ -483,18 +553,6 @@ struct LinkingResultsView: View {
                                 .buttonStyle(CompressorButtonStyle(prominent: true))
                                 .disabled(project.model.ocfFiles.isEmpty || project.model.segments.isEmpty)
                             }
-
-                            Button("Render All") {
-                                renderAll()
-                            }
-                            .buttonStyle(CompressorButtonStyle())
-                            .disabled(!canRenderAll)
-
-                            Button("Re-render Modified") {
-                                renderModified()
-                            }
-                            .buttonStyle(CompressorButtonStyle())
-                            .disabled(!canRenderModified)
 
                             if !confidentlyLinkedParents.isEmpty {
                                 Group {

@@ -61,18 +61,26 @@ struct StatusBarView: View {
 
             Spacer()
 
-            // Right: Expand/Collapse Button
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    viewModel.toggleExpanded()
+            // Right: Render Buttons + Expand/Collapse
+            HStack(spacing: 8) {
+                // Render buttons (only show when not actively processing)
+                if viewModel.currentOperation == .idle || viewModel.currentOperation == .rendering {
+                    renderButtons
                 }
-            }) {
-                Image(systemName: viewModel.isExpanded ? "chevron.up" : "chevron.down")
-                    .foregroundColor(.secondary)
-                    .imageScale(.small)
+
+                // Expand/Collapse Button
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        viewModel.toggleExpanded()
+                    }
+                }) {
+                    Image(systemName: viewModel.isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.secondary)
+                        .imageScale(.small)
+                }
+                .buttonStyle(.plain)
+                .help(viewModel.isExpanded ? "Collapse" : "Show Details")
             }
-            .buttonStyle(.plain)
-            .help(viewModel.isExpanded ? "Collapse" : "Show Details")
         }
         .padding(.horizontal, 16)
         .frame(height: 44)
@@ -186,6 +194,71 @@ struct StatusBarView: View {
             Text(value)
                 .foregroundColor(.primary)
                 .fontWeight(.medium)
+        }
+    }
+
+    // MARK: - Render Buttons
+
+    private var renderButtons: some View {
+        HStack(spacing: 8) {
+            // Primary render button (changes based on selection)
+            if viewModel.totalRenderableCount > 0 {
+                Button(action: {
+                    if viewModel.selectedRenderCount > 0 {
+                        viewModel.onRenderSelected?()
+                    } else {
+                        viewModel.onRenderAll?()
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 13))
+                        Text(renderButtonLabel)
+                            .font(.system(size: 14, weight: .medium))
+                            .monospacedDigit()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(width: 130) // Wide enough for "Render 999"
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(accentColor)
+                .controlSize(.regular)
+                .help(renderButtonTooltip)
+            }
+
+            // Re-render Modified button (only if there are modified files)
+            if viewModel.modifiedRenderCount > 0 {
+                Button(action: {
+                    viewModel.onRenderModified?()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
+                        Text("Modified (\(viewModel.modifiedRenderCount))")
+                            .font(.system(size: 13))
+                            .monospacedDigit()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .help("Re-render \(viewModel.modifiedRenderCount) modified OCF file\(viewModel.modifiedRenderCount == 1 ? "" : "s")")
+            }
+        }
+    }
+
+    private var renderButtonLabel: String {
+        if viewModel.selectedRenderCount > 0 {
+            return "Render \(viewModel.selectedRenderCount)"
+        } else {
+            return "Render All"
+        }
+    }
+
+    private var renderButtonTooltip: String {
+        if viewModel.selectedRenderCount > 0 {
+            return "Render \(viewModel.selectedRenderCount) selected OCF file\(viewModel.selectedRenderCount == 1 ? "" : "s")"
+        } else {
+            return "Render all \(viewModel.totalRenderableCount) OCF files"
         }
     }
 }

@@ -59,6 +59,22 @@ class StatusBarViewModel: ObservableObject {
     /// Timestamp of last completed operation
     @Published var lastCompletedTime: Date? = nil
 
+    // MARK: - Render Button State
+
+    /// Number of selected OCF parents for rendering
+    @Published var selectedRenderCount: Int = 0
+
+    /// Total available OCF parents for rendering
+    @Published var totalRenderableCount: Int = 0
+
+    /// Number of modified OCFs that need re-rendering
+    @Published var modifiedRenderCount: Int = 0
+
+    /// Callbacks for render actions
+    var onRenderSelected: (() -> Void)?
+    var onRenderAll: (() -> Void)?
+    var onRenderModified: (() -> Void)?
+
     // MARK: - Progress Update Methods
 
     /// Update import progress
