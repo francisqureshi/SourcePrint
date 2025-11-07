@@ -72,18 +72,29 @@ public struct RenderProgress: Equatable {
     public let percentage: Double?
     public let elapsedTime: TimeInterval?
 
+    // Segment-level progress (for detailed tracking)
+    public let currentSegment: Int?
+    public let totalSegments: Int?
+    public let segmentName: String?
+
     public init(
         ocfFileName: String,
         status: RenderStatus,
         message: String,
         percentage: Double? = nil,
-        elapsedTime: TimeInterval? = nil
+        elapsedTime: TimeInterval? = nil,
+        currentSegment: Int? = nil,
+        totalSegments: Int? = nil,
+        segmentName: String? = nil
     ) {
         self.ocfFileName = ocfFileName
         self.status = status
         self.message = message
         self.percentage = percentage
         self.elapsedTime = elapsedTime
+        self.currentSegment = currentSegment
+        self.totalSegments = totalSegments
+        self.segmentName = segmentName
     }
 }
 

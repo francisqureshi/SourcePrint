@@ -101,6 +101,10 @@ public class SwiftFFmpegProResCompositor {
     public var progressHandler: ((Double) -> Void)?
     public var completionHandler: ((Result<URL, Error>) -> Void)?
 
+    // Segment-level progress callback for detailed UI updates
+    // Reports: (currentSegment, totalSegments, segmentName, progress)
+    public var segmentProgressHandler: ((Int, Int, String, String) -> Void)?
+
     // Progress tracking for timeline processing
     private var totalSegments: Int = 0
     private var completedSegments: Int = 0
@@ -559,7 +563,11 @@ public class SwiftFFmpegProResCompositor {
         var currentFrame = 0
         var baseFramesRead = 0
 
-        for range in processingPlan.consolidatedRanges {
+        // Initialize segment progress tracking
+        totalSegments = processingPlan.consolidatedRanges.count
+        completedSegments = 0
+
+        for (rangeIndex, range) in processingPlan.consolidatedRanges.enumerated() {
             // 1. Copy base video from currentFrame to range start if there's a gap
             if currentFrame < range.startFrame {
                 let framesToCopy = range.startFrame - currentFrame
@@ -613,6 +621,16 @@ public class SwiftFFmpegProResCompositor {
             print(
                 "✅ Segment copying: \(range.frameCount) frames in \(String(format: "%.3f", segmentCopyTime))s (\(String(format: "%.1f", segmentFPS)) fps)"
             )
+
+            // Update segment progress
+            completedSegments += 1
+            let currentSegment = rangeIndex + 1 // 1-based for UI display
+            let overallProgress = String(format: "%.1f%%", (Double(completedSegments) / Double(totalSegments)) * 100)
+
+            // Report segment-level progress to UI
+            await MainActor.run {
+                segmentProgressHandler?(currentSegment, totalSegments, segmentName, overallProgress)
+            }
 
             currentFrame = range.endFrame
         }

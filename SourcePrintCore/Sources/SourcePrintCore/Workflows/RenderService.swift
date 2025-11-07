@@ -205,6 +205,20 @@ public class RenderService {
         // Execute composition
         let compositor = SwiftFFmpegProResCompositor()
 
+        // Wire up segment progress callback
+        compositor.segmentProgressHandler = { [weak self] currentSegment, totalSegments, segmentName, progress in
+            guard let self = self else { return }
+            Task { @MainActor in
+                await self.notifySegmentProgress(
+                    ocfFileName: parent.ocf.fileName,
+                    currentSegment: currentSegment,
+                    totalSegments: totalSegments,
+                    segmentName: segmentName,
+                    progress: progress
+                )
+            }
+        }
+
         let result = await withCheckedContinuation { continuation in
             compositor.completionHandler = { result in
                 continuation.resume(returning: result)
@@ -300,5 +314,37 @@ public class RenderService {
         )
 
         delegate?.renderService(self, didUpdateProgress: progress)
+    }
+
+    /// Notify delegate of segment-level progress
+    private func notifySegmentProgress(
+        ocfFileName: String,
+        currentSegment: Int,
+        totalSegments: Int,
+        segmentName: String,
+        progress: String
+    ) async {
+        // Parse percentage from progress string (e.g., "45.2%")
+        let percentage: Double?
+        if let percentValue = Double(progress.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)) {
+            percentage = percentValue
+        } else {
+            percentage = nil
+        }
+
+        let renderProgress = RenderProgress(
+            ocfFileName: ocfFileName,
+            status: .compositing,
+            message: "Processing segment \(currentSegment) of \(totalSegments)",
+            percentage: percentage,
+            elapsedTime: nil,
+            currentSegment: currentSegment,
+            totalSegments: totalSegments,
+            segmentName: segmentName
+        )
+
+        await MainActor.run {
+            delegate?.renderService(self, didUpdateProgress: renderProgress)
+        }
     }
 }

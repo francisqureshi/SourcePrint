@@ -280,5 +280,8 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     public func renderService(_ service: RenderService, didUpdateProgress progress: RenderProgress) {
         // Update current item with progress details
         updateCurrentItemStatus(progress.status, progress: progress.message)
+
+        // Forward segment-level progress to delegate
+        delegate?.queueManager(self, didUpdateProgress: progress)
     }
 }
