@@ -21,19 +21,11 @@ struct StatusBarView: View {
                 .frame(height: 1)
 
             // Main content
-            VStack(spacing: 0) {
-                // Compact mode (always visible)
-                compactView
-
-                // Expanded mode (conditional)
-                if viewModel.isExpanded {
-                    expandedView
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .background(Color.appBackgroundSecondary)
+            // Compact mode (always visible)
+            compactView
+                .background(Color.appBackgroundSecondary)
         }
-        .frame(height: viewModel.isExpanded ? 120 : 44)
+        .frame(height: 44)
     }
 
     // MARK: - Compact View
@@ -85,19 +77,6 @@ struct StatusBarView: View {
                 else if viewModel.currentOperation == .idle {
                     renderButtons
                 }
-
-                // Expand/Collapse Button
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        viewModel.toggleExpanded()
-                    }
-                }) {
-                    Image(systemName: viewModel.isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundColor(.secondary)
-                        .imageScale(.small)
-                }
-                .buttonStyle(.plain)
-                .help(viewModel.isExpanded ? "Collapse" : "Show Details")
             }
         }
         .padding(.horizontal, 16)
