@@ -208,7 +208,9 @@ public class RenderService {
         let compositor = SwiftFFmpegProResCompositor()
 
         // Wire up segment progress callback
-        compositor.segmentProgressHandler = { [weak self] currentSegment, totalSegments, segmentName, progress, framesProcessed, totalFrames in
+        compositor.segmentProgressHandler = {
+            [weak self]
+            currentSegment, totalSegments, segmentName, progress, framesProcessed, totalFrames in
             guard let self = self else { return }
             Task { @MainActor in
                 await self.notifySegmentProgress(
@@ -348,7 +350,10 @@ public class RenderService {
             let fpsPart = String(progress[progress.index(after: separatorIndex)...])
 
             // Parse percentage
-            if let percentValue = Double(percentPart.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)) {
+            if let percentValue = Double(
+                percentPart.replacingOccurrences(of: "%", with: "").trimmingCharacters(
+                    in: .whitespaces))
+            {
                 percentage = percentValue
             } else {
                 percentage = nil
@@ -358,7 +363,10 @@ public class RenderService {
             message = "Processing segment \(currentSegment) of \(totalSegments) \(fpsPart)"
         } else {
             // No FPS info, just parse percentage
-            if let percentValue = Double(progress.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)) {
+            if let percentValue = Double(
+                progress.replacingOccurrences(of: "%", with: "").trimmingCharacters(
+                    in: .whitespaces))
+            {
                 percentage = percentValue
             } else {
                 percentage = nil

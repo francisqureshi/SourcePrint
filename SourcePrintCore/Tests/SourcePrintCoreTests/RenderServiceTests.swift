@@ -185,8 +185,8 @@ final class RenderServiceTests: XCTestCase {
         let ocf = MediaFileInfo(
             fileName: fileName,
             url: URL(fileURLWithPath: "/tmp/\(fileName)"),
-            resolution: CGSize(width: 1920, height: 1080),
-            displayResolution: CGSize(width: 1920, height: 1080),
+            resolution: Resolution(width: 1920, height: 1080),
+            displayResolution: Resolution(width: 1920, height: 1080),
             sampleAspectRatio: "1:1",
             frameRate: AVRational(num: 24, den: 1),
             sourceTimecode: "01:00:00:00",
@@ -206,8 +206,8 @@ final class RenderServiceTests: XCTestCase {
             let segment = MediaFileInfo(
                 fileName: "segment_\(i).mov",
                 url: URL(fileURLWithPath: "/tmp/segment_\(i).mov"),
-                resolution: CGSize(width: 1920, height: 1080),
-                displayResolution: CGSize(width: 1920, height: 1080),
+                resolution: Resolution(width: 1920, height: 1080),
+                displayResolution: Resolution(width: 1920, height: 1080),
                 sampleAspectRatio: "1:1",
                 frameRate: AVRational(num: 24, den: 1),
                 sourceTimecode: "01:00:0\(i):00",

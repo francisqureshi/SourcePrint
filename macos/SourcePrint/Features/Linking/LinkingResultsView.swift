@@ -5,10 +5,10 @@
 //  Created by Francis Qureshi on 31/08/2025.
 //
 
-import SourcePrintCore
-import SwiftUI
 import AVFoundation
 import CoreMedia
+import SourcePrintCore
+import SwiftUI
 import TimecodeKit
 
 extension Notification.Name {
@@ -41,7 +41,8 @@ func formatLinkMethodBadges(_ linkMethod: String) -> [String] {
 func sortedByTimecode(_ segments: [LinkedSegment]) -> [LinkedSegment] {
     return segments.sorted { seg1, seg2 in
         guard let tc1 = seg1.segment.sourceTimecode,
-              let tc2 = seg2.segment.sourceTimecode else {
+            let tc2 = seg2.segment.sourceTimecode
+        else {
             // If no timecode, maintain original order
             return false
         }
@@ -57,6 +58,7 @@ struct LinkingResultsView: View {
     @EnvironmentObject var statusBarVM: StatusBarViewModel
     var onPerformLinking: (() -> Void)? = nil
     var onGenerateBlankRushes: (() -> Void)? = nil
+    var onCancelBlankRushes: (() -> Void)? = nil
 
     // Use the project's current linking result instead of a cached copy
     private var linkingResult: LinkingResult? {
@@ -180,6 +182,20 @@ struct LinkingResultsView: View {
         renderQueueManager.startProcessing()
     }
 
+    private func cancelCurrentOperation() {
+        NSLog("🛑 Cancel requested")
+
+        // Cancel rendering if active
+        if renderQueueManager.isProcessing {
+            NSLog("🛑 Canceling render queue")
+            renderQueueManager.stopProcessing()
+            statusBarVM.reset()
+        }
+
+        // Cancel blank rush generation if active (delegate to parent)
+        onCancelBlankRushes?()
+    }
+
     private func updateRenderButtonState() {
         // Count renderable OCFs (excluding offline)
         let renderableOCFs = confidentlyLinkedParents.filter { parent in
@@ -217,6 +233,7 @@ struct LinkingResultsView: View {
         statusBarVM.onRenderAll = renderAll
         statusBarVM.onRenderSelected = renderSelected
         statusBarVM.onRenderModified = renderModified
+        statusBarVM.onCancel = cancelCurrentOperation
 
         // Initial state update
         updateRenderButtonState()
@@ -225,7 +242,9 @@ struct LinkingResultsView: View {
     private func handleRenderCompletedChange(_ result: RenderResult?) {
         guard let result = result else { return }
         handleRenderCompleted(result, projectManager: projectManager)
-        NSLog("📊 Queue progress: \(renderQueueManager.completedCount) completed, \(renderQueueManager.failedCount) failed")
+        NSLog(
+            "📊 Queue progress: \(renderQueueManager.completedCount) completed, \(renderQueueManager.failedCount) failed"
+        )
     }
 
     private func handleProcessingChange(_ isProcessing: Bool) {
@@ -235,13 +254,15 @@ struct LinkingResultsView: View {
         }
     }
 
-    private func handleCurrentItemChange(_ item: SourcePrintCore.RenderQueueItem?) {
+    private func handleCurrentItemChange(_ item: SourcePrintCore.RuntimeRenderQueueItem?) {
         if let item = item {
-            let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
+            let currentIndex =
+                renderQueueManager.completedCount + renderQueueManager.failedCount + 1
 
             // Calculate total progress including current item
-            let totalProgressFrames = renderQueueManager.cumulativeCompletedFrames +
-                                     renderQueueManager.currentItemFramesProcessed
+            let totalProgressFrames =
+                renderQueueManager.cumulativeCompletedFrames
+                + renderQueueManager.currentItemFramesProcessed
 
             statusBarVM.updateRenderProgress(
                 currentItem: currentIndex,
@@ -258,13 +279,16 @@ struct LinkingResultsView: View {
 
     private func handleSegmentProgressChange(_ segmentProgress: SourcePrintCore.SegmentProgress?) {
         guard let segmentProgress = segmentProgress,
-              let item = renderQueueManager.currentItem else { return }
+            let item = renderQueueManager.currentItem
+        else { return }
 
         let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
 
-        // Calculate total progress including current item
-        let totalProgressFrames = renderQueueManager.cumulativeCompletedFrames +
-                                 renderQueueManager.currentItemFramesProcessed
+        // Use actual frame counts from completed segments (accounts for variable segment lengths)
+        // This is accurate because printProcessFFmpeg calculates actual frames from each completed segment
+        let totalProgressFrames =
+            renderQueueManager.cumulativeCompletedFrames
+            + renderQueueManager.currentItemFramesProcessed
 
         statusBarVM.updateRenderProgress(
             currentItem: currentIndex,
@@ -289,42 +313,48 @@ struct LinkingResultsView: View {
         if result.success {
             // Update blank rush status
             if let blankRushURL = result.blankRushURL {
-                project.model.blankRushStatus[result.ocfFileName] = .completed(date: Date(), url: blankRushURL)
+                project.model.blankRushStatus[result.ocfFileName] = .completed(
+                    date: Date(), url: blankRushURL)
             }
 
             // Update print status
             if let outputURL = result.outputURL {
-                project.model.printStatus[result.ocfFileName] = .printed(date: Date(), outputURL: outputURL)
+                project.model.printStatus[result.ocfFileName] = .printed(
+                    date: Date(), outputURL: outputURL)
             }
 
             // Clear modification dates for printed segments
-            if let parent = confidentlyLinkedParents.first(where: { $0.ocf.fileName == result.ocfFileName }) {
+            if let parent = confidentlyLinkedParents.first(where: {
+                $0.ocf.fileName == result.ocfFileName
+            }) {
                 for child in parent.children {
-                    project.model.segmentModificationDates.removeValue(forKey: child.segment.fileName)
+                    project.model.segmentModificationDates.removeValue(
+                        forKey: child.segment.fileName)
                 }
             }
 
             // Add print record
-            let printRecord = PrintRecord(
+            project.addPrintRecord(SourcePrintCore.PrintRecord(
                 date: Date(),
-                outputURL: result.outputURL ?? project.model.outputDirectory.appendingPathComponent(result.ocfFileName),
+                ocfFileName: result.ocfFileName,
+                outputURL: result.outputURL
+                    ?? project.model.outputDirectory.appendingPathComponent(result.ocfFileName),
                 segmentCount: result.segmentCount,
                 duration: result.duration,
                 success: true
-            )
-            project.addPrintRecord(printRecord)
+            ))
 
             NSLog("✅ Updated project status for: \(result.ocfFileName)")
         } else {
             // Record failed render
-            let printRecord = PrintRecord(
+            project.addPrintRecord(SourcePrintCore.PrintRecord(
                 date: Date(),
+                ocfFileName: result.ocfFileName,
                 outputURL: project.model.outputDirectory.appendingPathComponent(result.ocfFileName),
                 segmentCount: result.segmentCount,
                 duration: result.duration,
                 success: false
-            )
-            project.addPrintRecord(printRecord)
+            ))
 
             NSLog("❌ Recorded failed render for: \(result.ocfFileName)")
         }
@@ -375,6 +405,12 @@ struct LinkingResultsView: View {
             .onChange(of: renderQueueManager.currentSegmentProgress) { _, segmentProgress in
                 handleSegmentProgressChange(segmentProgress)
             }
+            .onChange(of: renderQueueManager.currentItemFramesProcessed) { _, _ in
+                // Frame count changed - update status bar with new progress
+                if let item = renderQueueManager.currentItem {
+                    handleCurrentItemChange(item)
+                }
+            }
             .onChange(of: selectedOCFParents) { _, _ in
                 updateRenderButtonState()
             }
@@ -395,61 +431,61 @@ struct LinkingResultsView: View {
 
     private var noResultsView: some View {
         VStack {
-                    // Action buttons even when no results
-                    HStack {
-                        Text("Linking")
-                            .font(.headline)
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 12) {
-                            if let performLinking = onPerformLinking {
-                                Button("Run Auto-Linking") {
-                                    performLinking()
-                                }
-                                .buttonStyle(CompressorButtonStyle(prominent: true))
-                                .disabled(project.model.ocfFiles.isEmpty || project.model.segments.isEmpty)
-                            }
+            // Action buttons even when no results
+            HStack {
+                Text("Linking")
+                    .font(.headline)
+
+                Spacer()
+
+                HStack(spacing: 12) {
+                    if let performLinking = onPerformLinking {
+                        Button("Run Auto-Linking") {
+                            performLinking()
                         }
+                        .buttonStyle(CompressorButtonStyle(prominent: true))
+                        .disabled(project.model.ocfFiles.isEmpty || project.model.segments.isEmpty)
                     }
-                    .padding()
-                    
-                    Spacer()
-                    
-                    VStack(spacing: 12) {
-                        Image(systemName: "link.circle")
-                            .font(.system(size: 48))
-                            .foregroundColor(.secondary)
-                        Text("No linking results yet")
-                            .font(.title2)
-                            .foregroundColor(.secondary)
-                        
-                        if project.model.ocfFiles.isEmpty && project.model.segments.isEmpty {
-                            Text("Import OCF files and segments to begin linking")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        } else if project.model.ocfFiles.isEmpty {
-                            Text("Import OCF files to link with segments")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        } else if project.model.segments.isEmpty {
-                            Text("Import segments to link with OCF files")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        } else {
-                            Text("Click 'Run Auto-Linking' to match segments with OCF files")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    
-                    Spacer()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding()
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Image(systemName: "link.circle")
+                    .font(.system(size: 48))
+                    .foregroundColor(.secondary)
+                Text("No linking results yet")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+
+                if project.model.ocfFiles.isEmpty && project.model.segments.isEmpty {
+                    Text("Import OCF files and segments to begin linking")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                } else if project.model.ocfFiles.isEmpty {
+                    Text("Import OCF files to link with segments")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                } else if project.model.segments.isEmpty {
+                    Text("Import segments to link with OCF files")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                } else {
+                    Text("Click 'Run Auto-Linking' to match segments with OCF files")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func expandSelectedCards() {
@@ -494,7 +530,10 @@ struct LinkingResultsView: View {
         case .segmentList:
             // Currently focused on a segment
             guard let currentSegment = selectedLinkedFiles.first,
-                  let segmentIndex = sortedChildren.firstIndex(where: { $0.segment.fileName == currentSegment }) else {
+                let segmentIndex = sortedChildren.firstIndex(where: {
+                    $0.segment.fileName == currentSegment
+                })
+            else {
                 return
             }
 
@@ -528,7 +567,10 @@ struct LinkingResultsView: View {
         case .segmentList:
             // Currently focused on a segment
             guard let currentSegment = selectedLinkedFiles.first,
-                  let segmentIndex = sortedChildren.firstIndex(where: { $0.segment.fileName == currentSegment }) else {
+                let segmentIndex = sortedChildren.firstIndex(where: {
+                    $0.segment.fileName == currentSegment
+                })
+            else {
                 return
             }
 
@@ -560,10 +602,9 @@ struct LinkingResultsView: View {
                     selectedOCFParents = [previousOCF.ocf.fileName]
                 }
             }
-            // If already at first OCF, do nothing (stay at top)
+        // If already at first OCF, do nothing (stay at top)
         }
     }
-
 
     @ViewBuilder
     private var linkingResultsContent: some View {
@@ -585,13 +626,16 @@ struct LinkingResultsView: View {
                                     performLinking()
                                 }
                                 .buttonStyle(CompressorButtonStyle(prominent: true))
-                                .disabled(project.model.ocfFiles.isEmpty || project.model.segments.isEmpty)
+                                .disabled(
+                                    project.model.ocfFiles.isEmpty || project.model.segments.isEmpty
+                                )
                             }
 
                             if !confidentlyLinkedParents.isEmpty {
                                 Group {
                                     Button("Select All") {
-                                        selectedOCFParents = Set(confidentlyLinkedParents.map { $0.ocf.fileName })
+                                        selectedOCFParents = Set(
+                                            confidentlyLinkedParents.map { $0.ocf.fileName })
                                     }
                                     .keyboardShortcut("a", modifiers: .command)
 
@@ -640,7 +684,9 @@ struct LinkingResultsView: View {
                 // Use ScrollView for true card layout
                 ScrollView {
                     VStack(spacing: 12) {
-                        ForEach(Array(confidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName) { index, parent in
+                        ForEach(
+                            Array(confidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName
+                        ) { index, parent in
                             CompressorStyleOCFCard(
                                 parent: parent,
                                 ocfIndex: index,
@@ -654,8 +700,12 @@ struct LinkingResultsView: View {
                                 getSelectedParents: getSelectedParents,
                                 allParents: confidentlyLinkedParents,
                                 currentlyRenderingOCF: currentlyRenderingOCF,
-                                renderProgress: renderQueueManager.currentItem?.ocfFileName == parent.ocf.fileName ? renderQueueManager.currentItem?.progress : nil,
-                                renderSegmentProgress: renderQueueManager.currentItem?.ocfFileName == parent.ocf.fileName ? renderQueueManager.currentSegmentProgress : nil,
+                                renderProgress: renderQueueManager.currentItem?.ocfFileName
+                                    == parent.ocf.fileName
+                                    ? renderQueueManager.currentItem?.progress : nil,
+                                renderSegmentProgress: renderQueueManager.currentItem?.ocfFileName
+                                    == parent.ocf.fileName
+                                    ? renderQueueManager.currentSegmentProgress : nil,
                                 onRenderSingle: {
                                     renderSingle(parent: parent)
                                 }
@@ -680,7 +730,7 @@ struct LinkingResultsView: View {
             if showUnmatchedDrawer {
                 // Visual divider similar to Xcode
                 Rectangle()
-                    .fill(Color.primary.opacity(0.1))
+                    .fill(Color.appBackgroundDivider)
                     .frame(width: 1)
 
                 VStack(alignment: .leading) {
@@ -690,7 +740,7 @@ struct LinkingResultsView: View {
                                 .font(.headline)
 
                             Spacer()
-                            
+
                             // Balance with some actions or info
                             HStack(spacing: 12) {
                                 Text("(\(totalUnmatchedItems))")
@@ -714,10 +764,13 @@ struct LinkingResultsView: View {
                                 .foregroundColor(.secondary)
                             }
                             .buttonStyle(.plain)
-                            .help(showUnmatchedDrawer ? "Hide Unmatched Items" : "Show Unmatched Items")
+                            .help(
+                                showUnmatchedDrawer
+                                    ? "Hide Unmatched Items" : "Show Unmatched Items"
+                            )
                             .padding(.trailing)
                         }
-                        
+
                         // Status line for unmatched items
                         if totalUnmatchedItems > 0 {
                             HStack {
@@ -834,4 +887,3 @@ struct LinkingResultsView: View {
         )
     }
 }
-

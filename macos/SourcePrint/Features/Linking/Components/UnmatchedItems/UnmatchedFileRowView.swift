@@ -47,7 +47,7 @@ struct UnmatchedFileRowView: View {
                 .font(.caption)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(Color.gray.opacity(0.2))
+                .background(Color.appBackgroundBadge)
                 .cornerRadius(4)
         }
     }

@@ -10,7 +10,7 @@ import SwiftUI
 
 struct OCFParentHeaderView: View {
     let parent: OCFParent
-    let project: Project
+    let project: ProjectViewModel
     let timelineVisualization: TimelineVisualization?
     let selectedSegmentFileName: String?
 
@@ -44,13 +44,13 @@ struct OCFParentHeaderView: View {
 
             HStack(spacing: 8) {
                 // Print Status Indicator
-                if let printStatus = project.printStatus[parent.ocf.fileName] {
+                if let printStatus = project.model.printStatus[parent.ocf.fileName] {
                     Label(printStatus.displayName, systemImage: printStatus.icon)
                         .font(.caption2)
                         .foregroundColor(printStatus.color)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(printStatus.color.opacity(0.1))
+                        .background(Color.appBackgroundBadge)
                         .cornerRadius(4)
                 } else {
                     Label("Not Printed", systemImage: "minus.circle")
@@ -58,7 +58,7 @@ struct OCFParentHeaderView: View {
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1))
+                        .background(Color.appBackgroundBadge)
                         .cornerRadius(4)
                 }
 
@@ -66,10 +66,10 @@ struct OCFParentHeaderView: View {
                 if project.blankRushFileExists(for: parent.ocf.fileName) {
                     Label("Blank Rush", systemImage: "film.fill")
                         .font(.caption2)
-                        .foregroundColor(.green)
+                        .foregroundColor(Color.appBlankRush)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.green.opacity(0.1))
+                        .background(Color.appBackgroundBadge)
                         .cornerRadius(4)
                 } else {
                     Label("No Blank Rush", systemImage: "film")
@@ -77,7 +77,7 @@ struct OCFParentHeaderView: View {
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1))
+                        .background(Color.appBackgroundBadge)
                         .cornerRadius(4)
                 }
             }

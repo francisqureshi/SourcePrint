@@ -20,7 +20,7 @@ public struct SegmentProgress: Equatable {
 @MainActor
 public protocol RenderQueueDelegate: AnyObject {
     /// Called when a render item starts processing
-    func queueManager(_ manager: RenderQueueManager, didStartItem item: RenderQueueItem)
+    func queueManager(_ manager: RenderQueueManager, didStartItem item: RuntimeRenderQueueItem)
 
     /// Called when progress updates occur
     func queueManager(_ manager: RenderQueueManager, didUpdateProgress progress: RenderProgress)
@@ -46,13 +46,13 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     public weak var delegate: RenderQueueDelegate?
 
     /// Current queue of items to process
-    @Published public private(set) var queue: [RenderQueueItem] = []
+    @Published public private(set) var queue: [RuntimeRenderQueueItem] = []
 
     /// Whether the queue is currently processing
     @Published public private(set) var isProcessing: Bool = false
 
     /// Current item being processed
-    @Published public private(set) var currentItem: RenderQueueItem?
+    @Published public private(set) var currentItem: RuntimeRenderQueueItem?
 
     /// Total items completed successfully
     @Published public private(set) var completedCount: Int = 0
@@ -107,7 +107,7 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     /// Add items to the queue
     public func addToQueue(_ parents: [OCFParent]) {
         let newItems = parents.map { parent in
-            RenderQueueItem(
+            RuntimeRenderQueueItem(
                 ocfFileName: parent.ocf.fileName,
                 ocfParent: parent,
                 status: .pending,
@@ -248,7 +248,7 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     }
 
     /// Wait for a render to complete (with timeout)
-    private func waitForRenderCompletion(item: RenderQueueItem) async -> RenderResult {
+    private func waitForRenderCompletion(item: RuntimeRenderQueueItem) async -> RenderResult {
         guard let service = renderService else {
             NSLog("❌ RenderService not configured!")
             return RenderResult(

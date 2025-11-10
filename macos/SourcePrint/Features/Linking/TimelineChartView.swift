@@ -30,7 +30,7 @@ struct TimelineChartView: View {
                     xEnd: .value("End", visualizationData.totalFrames),
                     y: .value("Track", 0)
                 )
-                .foregroundStyle(Color.gray.opacity(0.3))
+                .foregroundStyle(Color.appBackgroundDivider)
                 .lineStyle(StrokeStyle(lineWidth: trackHeight, lineCap: .butt))
 
                 // Regular segments (middle track, y=1)
@@ -93,7 +93,7 @@ struct TimelineChartView: View {
             }
 
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.appBackgroundCard.opacity(0.95), in: RoundedRectangle(cornerRadius: 8))
         .allowsHitTesting(false)
     }
 

@@ -14,6 +14,8 @@ public protocol WatchFolderDelegate: AnyObject {
 
 /// Watch folder service for monitoring video file changes
 /// Wraps FileMonitorWatchFolder with business logic layer
+/// Note: Only available on macOS (uses FSEvents)
+#if canImport(FileMonitor)
 public class WatchFolderService {
 
     // MARK: - Properties
@@ -242,3 +244,4 @@ public enum WatchFolderError: Error, LocalizedError {
         }
     }
 }
+#endif // canImport(FileMonitor)

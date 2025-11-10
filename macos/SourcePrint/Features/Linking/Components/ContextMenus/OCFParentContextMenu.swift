@@ -66,73 +66,8 @@ struct OCFParentContextMenu: View {
     
     @ViewBuilder
     var body: some View {
-        // Add to Render Queue
-        Button(operatingParents.count > 1 ? "Add \(operatingParents.count) Items to Render Queue" : "Add to Render Queue") {
-            addToRenderQueue()
-        }
-        .disabled(eligibleParentsForQueue.isEmpty)
-            
-            if eligibleParentsForQueue.count != operatingParents.count && operatingParents.count > 1 {
-                Text("\(eligibleParentsForQueue.count)/\(operatingParents.count) items eligible")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Divider()
-
-            // Blank Rush Management
-            if operatingParents.count == 1 {
-                if project.blankRushFileExists(for: parent.ocf.fileName) {
-                    Button("Regenerate Blank Rush", systemImage: "film.fill") {
-                        regenerateBlankRush()
-                    }
-                }
-            }
-
-            // Only show print status actions for single item context menus
-            if operatingParents.count == 1 {
-                Divider()
-
-                // Print status actions
-                if let printStatus = project.model.printStatus[parent.ocf.fileName] {
-                    switch printStatus {
-                    case .printed:
-                        if hasModifiedSegments {
-                            Button("Mark for Re-print (Segments Modified)", systemImage: "exclamationmark.circle") {
-                                project.model.printStatus[parent.ocf.fileName] = .needsReprint(
-                                    lastPrintDate: Date(),
-                                    reason: .segmentModified
-                                )
-                                projectManager.saveProject(project)
-                            }
-                        } else {
-                            Button("Force Re-print", systemImage: "arrow.clockwise") {
-                                project.model.printStatus[parent.ocf.fileName] = .needsReprint(
-                                    lastPrintDate: Date(),
-                                    reason: .manualRequest
-                                )
-                                projectManager.saveProject(project)
-                            }
-                        }
-
-                    case .needsReprint:
-                        Button("Clear Re-print Flag", systemImage: "checkmark.circle") {
-                            // Find the last successful print date
-                            if let lastSuccessfulPrint = project.model.printHistory
-                                .filter({ $0.success && $0.outputURL.lastPathComponent.contains((parent.ocf.fileName as NSString).deletingPathExtension) })
-                                .max(by: { $0.date < $1.date }) {
-                                project.model.printStatus[parent.ocf.fileName] = .printed(date: lastSuccessfulPrint.date, outputURL: lastSuccessfulPrint.outputURL)
-                            } else {
-                                project.model.printStatus.removeValue(forKey: parent.ocf.fileName)
-                            }
-                            projectManager.saveProject(project)
-                        }
-
-                    case .notPrinted:
-                        EmptyView()
-                    }
-                }
-            }
+        // Context menu items removed - functionality now available through main UI buttons
+        EmptyView()
     }
     
     private func addToRenderQueue() {
@@ -140,7 +75,7 @@ struct OCFParentContextMenu: View {
         var addedCount = 0
 
         for parent in parentsToAdd {
-            let queueItem = RenderQueueItem(ocfFileName: parent.ocf.fileName)
+            let queueItem = SourcePrintCore.RenderQueueItem(ocfFileName: parent.ocf.fileName)
             project.renderQueue.append(queueItem)
             addedCount += 1
         }

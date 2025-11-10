@@ -75,6 +75,9 @@ class StatusBarViewModel: ObservableObject {
     var onRenderAll: (() -> Void)?
     var onRenderModified: (() -> Void)?
 
+    /// Callback for canceling current operation
+    var onCancel: (() -> Void)?
+
     // MARK: - Progress Update Methods
 
     /// Update import progress
@@ -163,28 +166,24 @@ class StatusBarViewModel: ObservableObject {
             progressValue = Double(completed) / Double(total)
             calculatedPercentage = progressValue * 100
             isIndeterminate = false
-            NSLog("✅ FRAME-BASED: \(completed)/\(total) frames = \(String(format: "%.1f", calculatedPercentage))%")
         }
         // Priority 2: Use segment-based progress
         else if let currentSeg = currentSegment, let totalSeg = totalSegments, totalSeg > 0 {
             progressValue = Double(currentSeg) / Double(totalSeg)
             calculatedPercentage = progressValue * 100
             isIndeterminate = false
-            NSLog("✅ SEGMENT-BASED: segment \(currentSeg)/\(totalSeg) = \(String(format: "%.1f", calculatedPercentage))%")
         }
         // Priority 3: Parse percentage from progress string
         else if let percentValue = parsePercentage(from: progress) {
             progressValue = percentValue / 100.0
             calculatedPercentage = percentValue
             isIndeterminate = false
-            NSLog("✅ PARSED: \(percentValue)%")
         }
         // Priority 4: Fall back to item-based
         else {
             progressValue = Double(currentItem - 1) / Double(totalItems)
             calculatedPercentage = progressValue * 100
             isIndeterminate = false
-            NSLog("✅ ITEM-BASED: item \(currentItem)/\(totalItems) = \(String(format: "%.1f", calculatedPercentage))%")
         }
 
         // Status text: Item count + percentage

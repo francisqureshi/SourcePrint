@@ -31,8 +31,8 @@ final class AutoImportServiceTests: XCTestCase {
         return MediaFileInfo(
             fileName: fileName,
             url: url,
-            resolution: CGSize(width: 1920, height: 1080),
-            displayResolution: CGSize(width: 1920, height: 1080),
+            resolution: Resolution(width: 1920, height: 1080),
+            displayResolution: Resolution(width: 1920, height: 1080),
             sampleAspectRatio: "1:1",
             frameRate: AVRational(num: 24000, den: 1001),
             sourceTimecode: "01:00:00:00",
@@ -53,8 +53,8 @@ final class AutoImportServiceTests: XCTestCase {
         return MediaFileInfo(
             fileName: fileName,
             url: url,
-            resolution: CGSize(width: 1920, height: 1080),
-            displayResolution: CGSize(width: 1920, height: 1080),
+            resolution: Resolution(width: 1920, height: 1080),
+            displayResolution: Resolution(width: 1920, height: 1080),
             sampleAspectRatio: "1:1",
             frameRate: AVRational(num: 24000, den: 1001),
             sourceTimecode: "01:00:00:00",

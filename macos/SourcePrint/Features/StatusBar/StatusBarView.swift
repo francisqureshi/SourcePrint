@@ -10,14 +10,14 @@ import SwiftUI
 struct StatusBarView: View {
     @ObservedObject var viewModel: StatusBarViewModel
 
-    // Apple Compressor purple accent
-    private let accentColor = Color(red: 155/255, green: 89/255, blue: 182/255) // #9B59B6
+    // Themed green for progress bars
+    private let accentColor = AppTheme.success
 
     var body: some View {
         VStack(spacing: 0) {
             // Top border
             Rectangle()
-                .fill(Color.gray.opacity(0.2))
+                .fill(Color.appBackgroundDivider)
                 .frame(height: 1)
 
             // Main content
@@ -31,7 +31,7 @@ struct StatusBarView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(Color.appBackgroundSecondary)
         }
         .frame(height: viewModel.isExpanded ? 120 : 44)
     }
@@ -61,10 +61,28 @@ struct StatusBarView: View {
 
             Spacer()
 
-            // Right: Render Buttons + Expand/Collapse
+            // Right: Render/Stop Buttons + Expand/Collapse
             HStack(spacing: 8) {
-                // Render buttons (only show when not actively processing)
-                if viewModel.currentOperation == .idle || viewModel.currentOperation == .rendering {
+                // Show Stop button when actively processing
+                if viewModel.currentOperation == .generatingBlankRush || viewModel.currentOperation == .rendering {
+                    Button(action: {
+                        viewModel.onCancel?()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 12))
+                            Text("Stop")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .frame(minWidth: 100)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .controlSize(.regular)
+                    .help("Cancel current operation")
+                }
+                // Show Render buttons when idle
+                else if viewModel.currentOperation == .idle {
                     renderButtons
                 }
 
@@ -136,7 +154,7 @@ struct StatusBarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.appBackgroundTertiary)
     }
 
     // MARK: - Helper Views
@@ -173,7 +191,7 @@ struct StatusBarView: View {
                         .foregroundColor(.secondary)
                 }
             } else {
-                // Progress bar for determinate progress
+                // Standard progress bar
                 VStack(spacing: 4) {
                     ProgressView(value: viewModel.progressValue, total: 1.0)
                         .progressViewStyle(.linear)

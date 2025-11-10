@@ -15,6 +15,14 @@ import SwiftUI
 /// Handles all UI state management and delegates business logic to Core services
 class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDelegate {
 
+    // MARK: - File Format Version
+
+    /// File format version for future migrations
+    /// Current version: 1
+    /// Increment this when making breaking changes to the .w2 file structure
+    static let currentFileFormatVersion = 1
+    var fileFormatVersion: Int = ProjectViewModel.currentFileFormatVersion
+
     // MARK: - Core Data Model
 
     /// Single source of truth for project data
@@ -24,7 +32,8 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     // MARK: - UI-Specific State
 
     /// Render queue (UI-only, not persisted in Core model)
-    @Published var renderQueue: [RenderQueueItem] = []
+    /// Uses Core's RenderQueueItem (Codable version for persistence)
+    @Published var renderQueue: [SourcePrintCore.RenderQueueItem] = []
 
     /// OCF card expansion state (UI-only)
     @Published var ocfCardExpansionState: [String: Bool] = [:]
@@ -35,6 +44,9 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
             updateWatchFolderMonitoring()
         }
     }
+
+    /// Project validation result (UI-only, not persisted)
+    @Published var validationResult: ProjectValidationResult?
 
     /// Watch folder service instance
     private var watchFolderService: WatchFolderService?
@@ -70,7 +82,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     }
 
     /// Wrap existing ProjectModel
-    init(model: ProjectModel, renderQueue: [RenderQueueItem] = [], ocfCardExpansionState: [String: Bool] = [:], watchFolderSettings: WatchFolderSettings = WatchFolderSettings()) {
+    init(model: ProjectModel, renderQueue: [SourcePrintCore.RenderQueueItem] = [], ocfCardExpansionState: [String: Bool] = [:], watchFolderSettings: WatchFolderSettings = WatchFolderSettings()) {
         self.model = model
         self.renderQueue = renderQueue
         self.ocfCardExpansionState = ocfCardExpansionState
@@ -78,30 +90,30 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     }
 
     // MARK: - Codable Implementation
-
-    private enum CodingKeys: String, CodingKey {
-        case model
-        case renderQueue
-        case ocfCardExpansionState
-        case watchFolderSettings
-    }
+    // Uses ProjectContainer from Core for cross-platform compatibility
 
     required init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Decode using cross-platform ProjectContainer
+        let projectContainer = try ProjectContainer(from: decoder)
 
-        model = try container.decode(ProjectModel.self, forKey: .model)
-        renderQueue = try container.decodeIfPresent([RenderQueueItem].self, forKey: .renderQueue) ?? []
-        ocfCardExpansionState = try container.decodeIfPresent([String: Bool].self, forKey: .ocfCardExpansionState) ?? [:]
-        watchFolderSettings = try container.decodeIfPresent(WatchFolderSettings.self, forKey: .watchFolderSettings) ?? WatchFolderSettings()
+        // Initialize from container
+        self.fileFormatVersion = projectContainer.fileFormatVersion
+        self.model = projectContainer.model
+        self.renderQueue = projectContainer.renderQueue
+        self.ocfCardExpansionState = projectContainer.ocfCardExpansionState
+        self.watchFolderSettings = projectContainer.watchFolderSettings
     }
 
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-
-        try container.encode(model, forKey: .model)
-        try container.encode(renderQueue, forKey: .renderQueue)
-        try container.encode(ocfCardExpansionState, forKey: .ocfCardExpansionState)
-        try container.encode(watchFolderSettings, forKey: .watchFolderSettings)
+        // Create ProjectContainer and encode
+        let projectContainer = ProjectContainer(
+            fileFormatVersion: fileFormatVersion,
+            model: model,
+            renderQueue: renderQueue,
+            ocfCardExpansionState: ocfCardExpansionState,
+            watchFolderSettings: watchFolderSettings
+        )
+        try projectContainer.encode(to: encoder)
     }
 
     // MARK: - Project Management Methods
@@ -158,15 +170,9 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
         model.updateModified()
     }
 
-    func addPrintRecord(_ record: PrintRecord) {
-        // Convert UI PrintRecord to Core PrintRecord
-        let coreRecord = SourcePrintCore.PrintRecord(
-            date: record.date,
-            ocfFileName: "", // UI record doesn't have ocfFileName, use empty for now
-            outputURL: record.outputURL,
-            duration: record.duration
-        )
-        model.printHistory.append(coreRecord)
+    func addPrintRecord(_ record: SourcePrintCore.PrintRecord) {
+        // Directly append Core PrintRecord
+        model.printHistory.append(record)
         model.lastPrintDate = record.date
         model.updateModified()
     }

@@ -7,6 +7,7 @@ let package = Package(
     name: "SourcePrintCore",
     platforms: [
         .macOS(.v14)  // Minimum macOS version for AVFoundation async export APIs
+        // Linux is supported by default (no minimum version needed)
     ],
     products: [
         // Main Core library for media processing (includes TUI components)
@@ -18,6 +19,11 @@ let package = Package(
         .executable(
             name: "FrameRateTest",
             targets: ["FrameRateTest"]
+        ),
+        // Demo executable showing cross-platform project loading
+        .executable(
+            name: "ProjectLoaderDemo",
+            targets: ["ProjectLoaderDemo"]
         )
     ],
     dependencies: [
@@ -36,7 +42,8 @@ let package = Package(
                 "SwiftFFmpeg",
                 .product(name: "TimecodeKit", package: "TimecodeKit"),
                 .product(name: "TimecodeKitAV", package: "TimecodeKit"),
-                .product(name: "FileMonitor", package: "FileMonitor"),
+                // FileMonitor is macOS-only (uses FSEvents)
+                .product(name: "FileMonitor", package: "FileMonitor", condition: .when(platforms: [.macOS])),
             ],
             path: "Sources/SourcePrintCore",
             resources: [
@@ -50,6 +57,14 @@ let package = Package(
                 "SwiftFFmpeg"
             ],
             path: "Sources/FrameRateTest"
+        ),
+        // Demo executable showing cross-platform project loading
+        .executableTarget(
+            name: "ProjectLoaderDemo",
+            dependencies: [
+                "SourcePrintCore"
+            ],
+            path: "Sources/ProjectLoaderDemo"
         ),
         // Unit tests for Core functionality
         .testTarget(

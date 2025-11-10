@@ -110,7 +110,9 @@ struct MediaFileColumnTableView: View {
                 Button("Import \(type == .ocf ? "OCF Files" : "Segments")...") {
                     importAction()
                 }
-                .buttonStyle(CompressorButtonStyle(prominent: true))
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.accent)
+                .controlSize(.regular)
                 .disabled(isAnalyzing)
             }
         }
@@ -241,12 +243,12 @@ struct MediaFileColumnTableView: View {
 
             // Filler Column (expands to fill remaining space)
             Rectangle()
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(Color.appBackgroundSecondary)
                 .frame(minWidth: 100, maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: 22) // Full width, fixed height for compact header
-        .background(Color(nsColor: .controlBackgroundColor))
-        .border(Color(nsColor: .separatorColor), width: 0.5)
+        .background(Color.appBackgroundSecondary)
+        .border(Color.appBackgroundDivider, width: 0.5)
     }
     
     private var fileRowsView: some View {
@@ -273,6 +275,7 @@ struct MediaFileColumnTableView: View {
             .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity)
         .contextMenu(forSelectionType: String.self) { items in
             if items.count == 1, let fileName = items.first,
@@ -469,8 +472,8 @@ struct MediaFileColumnRowView: View {
                         .fontWeight(.bold)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 1)
-                        .background(Color.red.opacity(0.2))
-                        .foregroundColor(.red)
+                        .background(Color.appBackgroundBadge)
+                        .foregroundColor(Color.appError)
                         .cornerRadius(3)
                 } else if file.isVFX && type == .segment {
                     Text("VFX")
@@ -478,8 +481,8 @@ struct MediaFileColumnRowView: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 1)
-                        .background(Color.purple.opacity(0.2))
-                        .foregroundColor(.purple)
+                        .background(Color.appBackgroundBadge)
+                        .foregroundColor(Color.appVfxShot)
                         .cornerRadius(3)
                 }
 
@@ -528,7 +531,7 @@ struct MediaFileColumnRowView: View {
                 .lineLimit(1)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
-                .background(Color.gray.opacity(0.2))
+                .background(Color.appBackgroundBadge)
                 .cornerRadius(3)
                 .frame(width: columnWidths.type, alignment: .leading)
                 .padding(.horizontal, 4)
@@ -574,8 +577,8 @@ struct MediaFileColumnRowView: View {
         DisplayMediaInfo(
             fileName: "C20250825_0303.mov",
             url: URL(fileURLWithPath: "/path/to/file1.mov"),
-            resolution: CGSize(width: 3840, height: 2160),
-            displayResolution: CGSize(width: 3840, height: 2160),
+            resolution: Resolution(width: 3840, height: 2160),
+            displayResolution: Resolution(width: 3840, height: 2160),
             sampleAspectRatio: "1:1",
             frameRateDisplay: "25.000fps (25/1)",
             frameRateValue: 25.0,
@@ -593,8 +596,8 @@ struct MediaFileColumnRowView: View {
         DisplayMediaInfo(
             fileName: "Segment_001_VFX.mov",
             url: URL(fileURLWithPath: "/path/to/file2.mov"),
-            resolution: CGSize(width: 3840, height: 2160),
-            displayResolution: CGSize(width: 3840, height: 2160),
+            resolution: Resolution(width: 3840, height: 2160),
+            displayResolution: Resolution(width: 3840, height: 2160),
             sampleAspectRatio: "1:1",
             frameRateDisplay: "59.940fps (60000/1001)",
             frameRateValue: 59.94,

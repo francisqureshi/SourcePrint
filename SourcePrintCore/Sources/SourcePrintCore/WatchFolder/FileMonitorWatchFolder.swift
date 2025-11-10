@@ -7,10 +7,14 @@
 //  Watch folder service supporting multiple folders with different behaviors
 //
 
+#if canImport(FileMonitor)
 import FileMonitor
+#endif
 import Foundation
 
 /// Watch folder service supporting multiple folders with different behaviors
+/// Note: Only available on macOS (uses FSEvents via FileMonitor)
+#if canImport(FileMonitor)
 public class FileMonitorWatchFolder {
     private var gradeMonitor: FileMonitor?
     private var vfxMonitor: FileMonitor?
@@ -384,3 +388,4 @@ public class FileMonitorWatchFolder {
         stopWatching()
     }
 }
+#endif // canImport(FileMonitor)

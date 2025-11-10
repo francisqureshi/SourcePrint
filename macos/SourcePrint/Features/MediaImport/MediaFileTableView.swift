@@ -64,7 +64,7 @@ struct MediaFileTableView: View {
             Spacer()
         }
         .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(Color.appBackgroundSecondary)
     }
 
     private var tableView: some View {
@@ -76,6 +76,7 @@ struct MediaFileTableView: View {
             )
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .contextMenu(forSelectionType: String.self) { items in
             if items.count == 1, let fileName = items.first,
                 let file = files.first(where: { $0.fileName == fileName }),
@@ -144,8 +145,8 @@ struct MediaFileTableRowView: View {
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
-                                .background(Color.purple.opacity(0.2))
-                                .foregroundColor(.purple)
+                                .background(Color.appBackgroundBadge)
+                                .foregroundColor(Color.appVfxShot)
                                 .cornerRadius(3)
                         }
                     }
@@ -181,7 +182,7 @@ struct MediaFileTableRowView: View {
                             .font(.caption2)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.gray.opacity(0.2))
+                            .background(Color.appBackgroundBadge)
                             .cornerRadius(3)
                     }
                 }
@@ -199,8 +200,8 @@ struct MediaFileTableRowView: View {
     let sampleFile = DisplayMediaInfo(
         fileName: "Segment_001_VFX.mov",
         url: URL(fileURLWithPath: "/path/to/file2.mov"),
-        resolution: CGSize(width: 3840, height: 2160),
-        displayResolution: CGSize(width: 3840, height: 2160),
+        resolution: Resolution(width: 3840, height: 2160),
+        displayResolution: Resolution(width: 3840, height: 2160),
         sampleAspectRatio: "1:1",
         frameRateDisplay: "59.940fps (60000/1001)",
         frameRateValue: 59.94,

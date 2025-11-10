@@ -272,8 +272,8 @@ final class RenderQueueManagerTests: XCTestCase {
         let ocf = MediaFileInfo(
             fileName: fileName,
             url: URL(fileURLWithPath: "/tmp/\(fileName)"),
-            resolution: CGSize(width: 1920, height: 1080),
-            displayResolution: CGSize(width: 1920, height: 1080),
+            resolution: Resolution(width: 1920, height: 1080),
+            displayResolution: Resolution(width: 1920, height: 1080),
             sampleAspectRatio: "1:1",
             frameRate: AVRational(num: 24, den: 1),
             sourceTimecode: "01:00:00:00",
@@ -311,7 +311,7 @@ class MockRenderQueueDelegate: RenderQueueDelegate {
     var didEncounterError = false
     var lastError: Error?
 
-    func queueManager(_ manager: RenderQueueManager, didStartItem item: RenderQueueItem) {
+    func queueManager(_ manager: RenderQueueManager, didStartItem item: RuntimeRenderQueueItem) {
         didStartItem = true
         startedItemFileName = item.ocfFileName
     }

@@ -4,13 +4,18 @@
 //
 //  Created by Claude on 25/08/2025.
 //
+//  ⚠️ DEPRECATED - DO NOT USE IN NEW CODE
+//  This class is kept ONLY for backward compatibility when loading old .w2 files.
+//  All new code should use ProjectViewModel instead.
+//  See ProjectManager.swift loadProject() for migration logic.
+//
 
 import CryptoKit
 import Foundation
 import SourcePrintCore
 import SwiftUI
 
-// MARK: - Project Data Model
+// MARK: - DEPRECATED Project Data Model (For Migration Only)
 
 class Project: ObservableObject, Codable, Identifiable, WatchFolderDelegate {
 

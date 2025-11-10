@@ -104,16 +104,19 @@ struct CompressorStyleOCFCard: View {
                 // Use segment progress (e.g., 18/41 = 43.9%)
                 ProgressView(value: Double(segmentProgress.current), total: Double(segmentProgress.total))
                     .progressViewStyle(.linear)
+                    .tint(AppTheme.success)
                     .scaleEffect(x: 1, y: 0.5, anchor: .center)
             } else if let progress = renderProgress, let percentage = extractPercentage(from: progress) {
                 // Fallback: Extract percentage for determinate progress bar
                 ProgressView(value: percentage, total: 100.0)
                     .progressViewStyle(.linear)
+                    .tint(AppTheme.success)
                     .scaleEffect(x: 1, y: 0.5, anchor: .center)
             } else {
                 // Indeterminate progress bar (composition phase)
                 ProgressView()
                     .progressViewStyle(.linear)
+                    .tint(AppTheme.success)
                     .scaleEffect(x: 1, y: 0.5, anchor: .center)
             }
         }
@@ -348,6 +351,7 @@ struct OCFCardHeader: View {
             HStack(spacing: 4) {
                 ProgressView()
                     .controlSize(.small)
+                    .tint(AppTheme.success)
                     .scaleEffect(0.8)
                 Text("Rendering")
                     .font(.caption)

@@ -157,7 +157,7 @@ struct RenderLogSection: View {
         case .inProgress:
             return .orange
         case .completed:
-            return .green
+            return Color.white.opacity(0.5)
         case .failed:
             return .red
         }

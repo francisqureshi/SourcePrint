@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import CoreGraphics
 
 /// GUI-optimized media file information with display-ready formats
 /// Abstraction layer between MediaFileInfo (with SwiftFFmpeg) and UI components
@@ -17,8 +16,8 @@ public struct DisplayMediaInfo: Identifiable, Hashable, Codable {
     public let url: URL
 
     // Resolution info
-    public let resolution: CGSize?
-    public let displayResolution: CGSize?
+    public let resolution: Resolution?
+    public let displayResolution: Resolution?
     public let sampleAspectRatio: String?
 
     // Frame rate info - GUI optimized
@@ -44,8 +43,8 @@ public struct DisplayMediaInfo: Identifiable, Hashable, Codable {
     public init(
         fileName: String,
         url: URL,
-        resolution: CGSize?,
-        displayResolution: CGSize?,
+        resolution: Resolution?,
+        displayResolution: Resolution?,
         sampleAspectRatio: String?,
         frameRateDisplay: String,
         frameRateValue: Double,
@@ -87,9 +86,9 @@ extension DisplayMediaInfo {
     /// Formatted resolution string for display
     public var resolutionDisplay: String {
         if let displayRes = displayResolution {
-            return "\(Int(displayRes.width))×\(Int(displayRes.height))"
+            return displayRes.description
         } else if let res = resolution {
-            return "\(Int(res.width))×\(Int(res.height))"
+            return res.description
         }
         return "—"
     }

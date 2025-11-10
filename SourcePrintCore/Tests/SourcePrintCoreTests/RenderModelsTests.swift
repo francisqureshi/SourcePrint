@@ -21,11 +21,11 @@ final class RenderModelsTests: XCTestCase {
         XCTAssertTrue(RenderStatus.failed.isFinished)
     }
 
-    // MARK: - RenderQueueItem Tests
+    // MARK: - RuntimeRenderQueueItem Tests
 
-    func testRenderQueueItem_Initialization() {
+    func testRuntimeRenderQueueItem_Initialization() {
         let ocfParent = createMockOCFParent(fileName: "OCF001.mov")
-        let item = RenderQueueItem(
+        let item = RuntimeRenderQueueItem(
             ocfFileName: "OCF001.mov",
             ocfParent: ocfParent,
             status: .pending,
@@ -40,12 +40,12 @@ final class RenderModelsTests: XCTestCase {
         XCTAssertNil(item.duration)
     }
 
-    func testRenderQueueItem_DurationCalculation() {
+    func testRuntimeRenderQueueItem_DurationCalculation() {
         let ocfParent = createMockOCFParent(fileName: "OCF001.mov")
         let startTime = Date()
         let completionTime = startTime.addingTimeInterval(10.5)
 
-        let item = RenderQueueItem(
+        let item = RuntimeRenderQueueItem(
             ocfFileName: "OCF001.mov",
             ocfParent: ocfParent,
             status: .completed,
@@ -58,11 +58,11 @@ final class RenderModelsTests: XCTestCase {
         XCTAssertEqual(item.duration!, 10.5, accuracy: 0.01)
     }
 
-    func testRenderQueueItem_DurationWhileInProgress() {
+    func testRuntimeRenderQueueItem_DurationWhileInProgress() {
         let ocfParent = createMockOCFParent(fileName: "OCF001.mov")
         let startTime = Date().addingTimeInterval(-5) // Started 5 seconds ago
 
-        let item = RenderQueueItem(
+        let item = RuntimeRenderQueueItem(
             ocfFileName: "OCF001.mov",
             ocfParent: ocfParent,
             status: .compositing,
@@ -76,13 +76,13 @@ final class RenderModelsTests: XCTestCase {
         XCTAssertLessThan(item.duration!, 6.0)    // Less than 6 seconds
     }
 
-    func testRenderQueueItem_Equality() {
+    func testRuntimeRenderQueueItem_Equality() {
         let ocfParent = createMockOCFParent(fileName: "OCF001.mov")
         let id = UUID()
 
-        let item1 = RenderQueueItem(id: id, ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .pending)
-        let item2 = RenderQueueItem(id: id, ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .pending)
-        let item3 = RenderQueueItem(id: UUID(), ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .pending)
+        let item1 = RuntimeRenderQueueItem(id: id, ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .pending)
+        let item2 = RuntimeRenderQueueItem(id: id, ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .pending)
+        let item3 = RuntimeRenderQueueItem(id: UUID(), ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .pending)
 
         XCTAssertEqual(item1, item2) // Same id and status
         XCTAssertNotEqual(item1, item3) // Different id
@@ -209,7 +209,7 @@ final class RenderModelsTests: XCTestCase {
 
     func testRenderQueueStatus_InProgress() {
         let ocfParent = createMockOCFParent(fileName: "OCF001.mov")
-        let currentItem = RenderQueueItem(ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .compositing)
+        let currentItem = RuntimeRenderQueueItem(ocfFileName: "OCF001.mov", ocfParent: ocfParent, status: .compositing)
 
         let status = RenderQueueStatus(
             totalItems: 10,
@@ -261,8 +261,8 @@ final class RenderModelsTests: XCTestCase {
         let ocf = MediaFileInfo(
             fileName: fileName,
             url: URL(fileURLWithPath: "/tmp/\(fileName)"),
-            resolution: CGSize(width: 1920, height: 1080),
-            displayResolution: CGSize(width: 1920, height: 1080),
+            resolution: Resolution(width: 1920, height: 1080),
+            displayResolution: Resolution(width: 1920, height: 1080),
             sampleAspectRatio: "1:1",
             frameRate: AVRational(num: 24, den: 1),
             sourceTimecode: "01:00:00:00",

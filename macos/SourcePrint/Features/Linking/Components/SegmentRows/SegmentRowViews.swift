@@ -31,7 +31,7 @@ struct TreeLinkedSegmentRowView: View {
 
     var confidenceColor: Color {
         switch linkedSegment.linkConfidence {
-        case .high: return AppTheme.success
+        case .high: return Color.white.opacity(0.3)
         case .medium: return AppTheme.warning
         case .low: return AppTheme.error
         case .none: return .gray
@@ -70,8 +70,8 @@ struct TreeLinkedSegmentRowView: View {
                             .fontWeight(.medium)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.purple.opacity(0.2))
-                            .foregroundColor(.purple)
+                            .background(Color.appBackgroundBadge)
+                            .foregroundColor(Color.appVfxShot)
                             .cornerRadius(3)
                     }
 
@@ -87,8 +87,8 @@ struct TreeLinkedSegmentRowView: View {
                         }
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background(Color.red.opacity(0.2))
-                        .foregroundColor(.red)
+                        .background(Color.appBackgroundBadge)
+                        .foregroundColor(Color.appError)
                         .cornerRadius(3)
                     } else if let modDate = modificationDate {
                         HStack(spacing: 2) {
@@ -101,8 +101,8 @@ struct TreeLinkedSegmentRowView: View {
                         }
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
-                        .background(Color.yellow.opacity(0.2))
-                        .foregroundColor(.yellow)
+                        .background(Color.appBackgroundBadge)
+                        .foregroundColor(Color.appWarning)
                         .cornerRadius(3)
                     }
                 }
@@ -114,7 +114,7 @@ struct TreeLinkedSegmentRowView: View {
                                 .font(.caption2)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
-                                .background(Color.secondary.opacity(0.15))
+                                .background(Color.appBackgroundBadge)
                                 .cornerRadius(3)
                         }
                     }
@@ -188,8 +188,8 @@ struct LowConfidenceSegmentRowView: View {
                             .fontWeight(.medium)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.purple.opacity(0.2))
-                            .foregroundColor(.purple)
+                            .background(Color.appBackgroundBadge)
+                            .foregroundColor(Color.appVfxShot)
                             .cornerRadius(3)
                     }
                 }
@@ -201,7 +201,7 @@ struct LowConfidenceSegmentRowView: View {
                                 .font(.caption2)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
-                                .background(Color.secondary.opacity(0.15))
+                                .background(Color.appBackgroundBadge)
                                 .cornerRadius(3)
                         }
                     }
@@ -240,7 +240,7 @@ struct LinkedSegmentRowView: View {
 
     var confidenceColor: Color {
         switch linkedSegment.linkConfidence {
-        case .high: return AppTheme.success
+        case .high: return Color.white.opacity(0.3)
         case .medium: return AppTheme.warning
         case .low: return AppTheme.error
         case .none: return .gray
@@ -285,8 +285,8 @@ struct LinkedSegmentRowView: View {
                             .fontWeight(.medium)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
-                            .background(Color.purple.opacity(0.2))
-                            .foregroundColor(.purple)
+                            .background(Color.appBackgroundBadge)
+                            .foregroundColor(Color.appVfxShot)
                             .cornerRadius(3)
                     }
                 }
@@ -298,7 +298,7 @@ struct LinkedSegmentRowView: View {
                                 .font(.caption2)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
-                                .background(Color.secondary.opacity(0.15))
+                                .background(Color.appBackgroundBadge)
                                 .cornerRadius(3)
                         }
                     }

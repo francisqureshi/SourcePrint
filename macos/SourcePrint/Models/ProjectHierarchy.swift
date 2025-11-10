@@ -264,8 +264,8 @@ class OCFParentItemWithModification: HierarchicalItem, ObservableObject {
 class ProjectHierarchy: ObservableObject {
     @Published var items: [any HierarchicalItem] = []
     
-    func updateFromProject(_ project: Project) {
-        guard let linkingResult = project.linkingResult else {
+    func updateFromProject(_ project: ProjectViewModel) {
+        guard let linkingResult = project.model.linkingResult else {
             items = []
             return
         }
@@ -273,13 +273,13 @@ class ProjectHierarchy: ObservableObject {
         items = linkingResult.ocfParents.compactMap { parent in
             guard parent.hasChildren else { return nil }
             
-            let blankRushStatus = project.blankRushStatus[parent.ocf.fileName] ?? .notCreated
-            
+            let blankRushStatus = project.model.blankRushStatus[parent.ocf.fileName] ?? .notCreated
+
             // Create children with modification tracking
             let childrenWithModification = parent.children.map { linkedSegment in
                 let segmentFileName = linkedSegment.segment.fileName
-                let trackedModDate = project.segmentModificationDates[segmentFileName]
-                let isModified = project.modifiedSegments.contains(segmentFileName)
+                let trackedModDate = project.model.segmentModificationDates[segmentFileName]
+                let isModified = project.model.offlineMediaFiles.contains(segmentFileName)
                 
                 return SegmentChildItem(
                     segment: linkedSegment.segment,

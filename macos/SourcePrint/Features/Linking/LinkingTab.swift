@@ -14,7 +14,8 @@ struct LinkingTab: View {
     @EnvironmentObject var statusBarVM: StatusBarViewModel
     @State private var isLinking = false
     @State private var timelineVisualizationData: [String: TimelineVisualization] = [:]
-    
+    @State private var blankRushTask: Task<Void, Never>? = nil
+
     var body: some View {
         VStack(spacing: 20) {
             // Linking Results Display
@@ -22,7 +23,8 @@ struct LinkingTab: View {
                 project: project,
                 timelineVisualizationData: timelineVisualizationData,
                 onPerformLinking: performLinking,
-                onGenerateBlankRushes: generateBlankRushes
+                onGenerateBlankRushes: generateBlankRushes,
+                onCancelBlankRushes: cancelBlankRushes
             )
             .environmentObject(projectManager)
         }
@@ -224,7 +226,7 @@ struct LinkingTab: View {
         
         isLinking = true
 
-        Task {
+        blankRushTask = Task {
             let blankRushCreator = BlankRushIntermediate(projectDirectory: project.model.blankRushDirectory.path)
             var allResults: [BlankRushResult] = []
 
@@ -284,6 +286,16 @@ struct LinkingTab: View {
 
                 NSLog("✅ Blank Rush generation completed: \(successCount)/\(allResults.count) successful")
             }
+        }
+    }
+
+    private func cancelBlankRushes() {
+        if let task = blankRushTask {
+            NSLog("🛑 Canceling blank rush generation")
+            task.cancel()
+            blankRushTask = nil
+            isLinking = false
+            statusBarVM.reset()
         }
     }
 }

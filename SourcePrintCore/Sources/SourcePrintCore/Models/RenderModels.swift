@@ -19,10 +19,11 @@ public enum RenderStatus: String, Codable, Equatable {
     }
 }
 
-// MARK: - Render Queue Item
+// MARK: - Runtime Render Queue Item
 
-/// Represents a single item in the render queue
-public struct RenderQueueItem: Identifiable, Equatable {
+/// Represents a single item in the render queue at runtime (NOT Codable - includes OCFParent reference)
+/// For persistence, use the app's Codable RenderQueueItem instead
+public struct RuntimeRenderQueueItem: Identifiable, Equatable {
     public let id: UUID
     public let ocfFileName: String
     public let ocfParent: OCFParent
@@ -63,7 +64,7 @@ public struct RenderQueueItem: Identifiable, Equatable {
         return end.timeIntervalSince(start)
     }
 
-    public static func == (lhs: RenderQueueItem, rhs: RenderQueueItem) -> Bool {
+    public static func == (lhs: RuntimeRenderQueueItem, rhs: RuntimeRenderQueueItem) -> Bool {
         lhs.id == rhs.id &&
         lhs.ocfFileName == rhs.ocfFileName &&
         lhs.status == rhs.status
@@ -179,14 +180,14 @@ public struct RenderQueueStatus: Equatable {
     public let completedItems: Int
     public let failedItems: Int
     public let isProcessing: Bool
-    public let currentItem: RenderQueueItem?
+    public let currentItem: RuntimeRenderQueueItem?
 
     public init(
         totalItems: Int,
         completedItems: Int,
         failedItems: Int,
         isProcessing: Bool,
-        currentItem: RenderQueueItem? = nil
+        currentItem: RuntimeRenderQueueItem? = nil
     ) {
         self.totalItems = totalItems
         self.completedItems = completedItems

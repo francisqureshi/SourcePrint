@@ -15,10 +15,15 @@ struct AppTheme {
     static let accent = Color(red: 0.58, green: 0.39, blue: 0.75)  // Purple accent like Compressor
     static let accentSecondary = Color(red: 0.52, green: 0.33, blue: 0.69)  // Darker purple
 
-    // MARK: - Background Colors
-    static let backgroundPrimary = Color(red: 0.15, green: 0.15, blue: 0.17)  // Dark grey like Compressor
-    static let backgroundSecondary = Color(red: 0.12, green: 0.12, blue: 0.14)  // Darker panel
-    static let backgroundTertiary = Color(red: 0.18, green: 0.18, blue: 0.20)  // Lighter panel
+    // MARK: - Background Colors (Pure grayscale - no tinting)
+    static let backgroundPrimary = Color(white: 0.12)  // Dark grey like Compressor
+    static let backgroundSecondary = Color(white: 0.09)  // Darker panel
+    static let backgroundTertiary = Color(white: 0.15)  // Lighter panel
+
+    // MARK: - UI Element Backgrounds (Pure grayscale - no tinting)
+    static let backgroundCard = Color(white: 0.13)  // Card/panel background
+    static let backgroundBadge = Color(white: 0.20)  // Badge/pill backgrounds
+    static let backgroundDivider = Color(white: 0.25)  // Dividers and borders
 
     // MARK: - Text Colors
     static let textPrimary = Color.white
@@ -45,7 +50,7 @@ struct AppTheme {
 
     // MARK: - Print Status Colors
     static let notPrinted = textTertiary
-    static let printed = success
+    static let printed = Color.white.opacity(0.5)
     static let needsReprint = warning
 }
 
@@ -58,6 +63,9 @@ extension Color {
     static let appBackground = AppTheme.backgroundPrimary
     static let appBackgroundSecondary = AppTheme.backgroundSecondary
     static let appBackgroundTertiary = AppTheme.backgroundTertiary
+    static let appBackgroundCard = AppTheme.backgroundCard
+    static let appBackgroundBadge = AppTheme.backgroundBadge
+    static let appBackgroundDivider = AppTheme.backgroundDivider
 
     static let appTextPrimary = AppTheme.textPrimary
     static let appTextSecondary = AppTheme.textSecondary

@@ -67,8 +67,8 @@ struct MediaFileRowView: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.purple.opacity(0.2))
-                        .foregroundColor(.purple)
+                        .background(Color.appBackgroundBadge)
+                        .foregroundColor(Color.appVfxShot)
                         .cornerRadius(4)
                 }
 
@@ -76,7 +76,7 @@ struct MediaFileRowView: View {
                     .font(.caption)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.gray.opacity(0.2))
+                    .background(Color.appBackgroundBadge)
                     .cornerRadius(4)
             }
         }
@@ -100,8 +100,8 @@ struct MediaFileRowView: View {
     let sampleFile = DisplayMediaInfo(
         fileName: "C20250825_0303.mov",
         url: URL(fileURLWithPath: "/path/to/file.mov"),
-        resolution: CGSize(width: 3840, height: 2160),
-        displayResolution: CGSize(width: 3840, height: 2160),
+        resolution: Resolution(width: 3840, height: 2160),
+        displayResolution: Resolution(width: 3840, height: 2160),
         sampleAspectRatio: "1:1",
         frameRateDisplay: "25.000fps (25/1)",
         frameRateValue: 25.0,

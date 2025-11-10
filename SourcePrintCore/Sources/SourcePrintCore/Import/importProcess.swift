@@ -34,8 +34,8 @@ extension AVRational: Codable {
 public struct MediaFileInfo: Codable {
     public let fileName: String
     public let url: URL
-    public let resolution: CGSize?  // Coded resolution (actual pixel dimensions)
-    public let displayResolution: CGSize?  // Display resolution (SAR-corrected)
+    public let resolution: Resolution?  // Coded resolution (actual pixel dimensions)
+    public let displayResolution: Resolution?  // Display resolution (SAR-corrected)
     public let sampleAspectRatio: String?  // SAR like "139:140"
     public let frameRate: AVRational?  // nil = unknown, direct rational for perfect precision
     public let sourceTimecode: String?
@@ -56,7 +56,7 @@ public struct MediaFileInfo: Codable {
     public let fileNameLower: String   // Lowercase filename for case-insensitive comparisons
     public let reelNameLower: String?  // Lowercase reel name for case-insensitive comparisons
 
-    public init(fileName: String, url: URL, resolution: CGSize?, displayResolution: CGSize?, sampleAspectRatio: String?, frameRate: AVRational?, sourceTimecode: String?, endTimecode: String?, durationInFrames: Int64?, isDropFrame: Bool?, reelName: String?, isInterlaced: Bool?, fieldOrder: String?, mediaType: MediaType, isVFXShot: Bool? = nil, startFrameNumber: Int? = nil, endFrameNumber: Int? = nil, frameRateFloat: Float? = nil, fileNameLower: String? = nil, reelNameLower: String? = nil) {
+    public init(fileName: String, url: URL, resolution: Resolution?, displayResolution: Resolution?, sampleAspectRatio: String?, frameRate: AVRational?, sourceTimecode: String?, endTimecode: String?, durationInFrames: Int64?, isDropFrame: Bool?, reelName: String?, isInterlaced: Bool?, fieldOrder: String?, mediaType: MediaType, isVFXShot: Bool? = nil, startFrameNumber: Int? = nil, endFrameNumber: Int? = nil, frameRateFloat: Float? = nil, fileNameLower: String? = nil, reelNameLower: String? = nil) {
         self.fileName = fileName
         self.url = url
         self.resolution = resolution
@@ -89,7 +89,7 @@ public struct MediaFileInfo: Codable {
     }
 
     /// Effective display resolution (SAR-corrected for ARRI, or coded resolution for others)
-    public var effectiveDisplayResolution: CGSize? {
+    public var effectiveDisplayResolution: Resolution? {
         if let displayRes = displayResolution {
             return displayRes
         }
@@ -101,7 +101,7 @@ public struct MediaFileInfo: Codable {
                 let den = Float(components[1])
             {
                 let displayWidth = Float(resolution.width) * num / den
-                return CGSize(width: CGFloat(displayWidth), height: resolution.height)
+                return Resolution(width: Double(displayWidth), height: resolution.height)
             }
         }
         return resolution
@@ -233,8 +233,8 @@ public class MediaAnalyzer {
 
     public func analyzeMediaFile(at url: URL, type: MediaType) async throws -> MediaFileInfo {
         // Extract properties using SwiftFFmpeg - no fallbacks, only real data
-        var resolution: CGSize? = nil
-        var displayResolution: CGSize? = nil
+        var resolution: Resolution? = nil
+        var displayResolution: Resolution? = nil
         var sampleAspectRatio: String? = nil
         var frameRate: AVRational? = nil
         var frameRateFloat: Float? = nil  // Pre-computed to avoid redundant divisions
@@ -257,8 +257,8 @@ public class MediaAnalyzer {
 
                 // Check if this is a video stream by checking if it has width/height
                 if codecPar.width > 0 && codecPar.height > 0 {
-                    resolution = CGSize(
-                        width: CGFloat(codecPar.width), height: CGFloat(codecPar.height))
+                    resolution = Resolution(
+                        width: Int(codecPar.width), height: Int(codecPar.height))
 
                     // Extract Sample Aspect Ratio and calculate display resolution
                     let sar = stream.sampleAspectRatio
@@ -267,11 +267,11 @@ public class MediaAnalyzer {
                         print(
                             "    📐 Sample Aspect Ratio: \(sampleAspectRatio!) (sensor crop/padding)"
                         )
-                        
+
                         // Calculate display resolution (SAR-corrected) during import
                         if sampleAspectRatio != "1:1" {
-                            let displayWidth = Float(resolution!.width) * Float(sar.num) / Float(sar.den)
-                            displayResolution = CGSize(width: CGFloat(displayWidth), height: resolution!.height)
+                            let displayWidth = Double(resolution!.width) * Double(sar.num) / Double(sar.den)
+                            displayResolution = Resolution(width: displayWidth, height: resolution!.height)
                             print(
                                 "    📺 SAR-corrected display resolution: \(Int(displayResolution!.width))x\(Int(displayResolution!.height))"
                             )

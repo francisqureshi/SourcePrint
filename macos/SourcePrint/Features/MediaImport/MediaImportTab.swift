@@ -38,10 +38,11 @@ struct MediaImportTab: View {
                     Button("Remove Offline Media") {
                         showRemoveOfflineConfirmation = true
                     }
-                    .buttonStyle(CompressorButtonStyle(prominent: false))
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
                 }
                 .padding()
-                .background(Color.orange.opacity(0.1))
+                .background(Color.appBackgroundBadge)
                 .cornerRadius(6)
                 .padding(.horizontal)
             }
@@ -367,7 +368,7 @@ struct WatchFolderSection: View {
                         selectGradeFolder()
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.regular)
                 }
 
                 // VFX folder row
@@ -400,12 +401,13 @@ struct WatchFolderSection: View {
                         selectVFXFolder()
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.regular)
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 12)
         }
         .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     private func selectGradeFolder() {

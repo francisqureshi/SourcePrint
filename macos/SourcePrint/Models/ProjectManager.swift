@@ -108,6 +108,22 @@ class ProjectManager: ObservableObject {
                 // Set the file URL
                 viewModel.model.fileURL = url
 
+                // Validate project integrity
+                let validationResult = ProjectValidator.validate(viewModel.model)
+                viewModel.validationResult = validationResult
+
+                if !validationResult.isValid {
+                    NSLog("⚠️ Project validation found \(validationResult.issues.count) issue(s):")
+                    for issue in validationResult.issues {
+                        NSLog("  [\(issue.severity == .error ? "ERROR" : "WARNING")] \(issue.message)")
+                    }
+
+                    // Show validation alert to user on main thread
+                    DispatchQueue.main.async {
+                        ProjectAlertHelper.showValidationAlert(for: validationResult, projectName: viewModel.model.name)
+                    }
+                }
+
                 // Scan for existing blank rushes after loading
                 viewModel.scanForExistingBlankRushes()
 
@@ -144,9 +160,19 @@ class ProjectManager: ObservableObject {
                 fileURL: url
             )
 
+            // Convert deprecated render queue to new format
+            let convertedRenderQueue = oldProject.renderQueue.map { oldItem in
+                SourcePrintCore.RenderQueueItem(
+                    id: oldItem.id,
+                    ocfFileName: oldItem.ocfFileName,
+                    addedDate: oldItem.addedDate,
+                    status: PersistentRenderStatus(rawValue: oldItem.status.rawValue) ?? .queued
+                )
+            }
+
             let viewModel = ProjectViewModel(
                 model: model,
-                renderQueue: oldProject.renderQueue,
+                renderQueue: convertedRenderQueue,
                 ocfCardExpansionState: oldProject.ocfCardExpansionState,
                 watchFolderSettings: oldProject.watchFolderSettings
             )
@@ -162,59 +188,84 @@ class ProjectManager: ObservableObject {
         }
     }
     
-    func saveProject(_ viewModel: ProjectViewModel) {
+    func saveProject(_ viewModel: ProjectViewModel, completion: ((Result<Void, Error>) -> Void)? = nil) {
         // Serialize all project saves on a dedicated queue to prevent concurrent access corruption
         saveQueue.async {
-            // Use the original file location if it exists, otherwise use default directory
-            let url: URL
-            if let originalFileURL = viewModel.model.fileURL {
-                // Check if project name has changed - if so, update filename to match
-                let currentFilename = originalFileURL.deletingPathExtension().lastPathComponent
-                let expectedFilename = viewModel.model.name  // Keep natural filename with spaces
+            let result = self.saveProjectSync(viewModel)
 
-                if currentFilename != expectedFilename {
-                    // Project name changed - update filename to match
-                    let newURL = originalFileURL.deletingLastPathComponent()
-                        .appendingPathComponent("\(expectedFilename).w2")
+            // Notify on main thread if completion provided
+            if let completion = completion {
+                DispatchQueue.main.async {
+                    completion(result)
+                }
+            }
+        }
+    }
 
-                    // Try to rename the file if it's in the same directory
-                    if originalFileURL.deletingLastPathComponent() == newURL.deletingLastPathComponent() {
-                        do {
-                            try FileManager.default.moveItem(at: originalFileURL, to: newURL)
-                            viewModel.model.fileURL = newURL
-                            url = newURL
-                            print("📝 Renamed file to match project name: \(newURL.path)")
-                        } catch {
-                            print("⚠️ Could not rename file, saving to original location: \(error)")
-                            url = originalFileURL
-                        }
-                    } else {
+    private func saveProjectSync(_ viewModel: ProjectViewModel) -> Result<Void, Error> {
+        // Use the original file location if it exists, otherwise use default directory
+        let url: URL
+        if let originalFileURL = viewModel.model.fileURL {
+            // Check if project name has changed - if so, update filename to match
+            let currentFilename = originalFileURL.deletingPathExtension().lastPathComponent
+            let expectedFilename = viewModel.model.name  // Keep natural filename with spaces
+
+            if currentFilename != expectedFilename {
+                // Project name changed - update filename to match
+                let newURL = originalFileURL.deletingLastPathComponent()
+                    .appendingPathComponent("\(expectedFilename).w2")
+
+                // Try to rename the file if it's in the same directory
+                if originalFileURL.deletingLastPathComponent() == newURL.deletingLastPathComponent() {
+                    do {
+                        try FileManager.default.moveItem(at: originalFileURL, to: newURL)
+                        viewModel.model.fileURL = newURL
+                        url = newURL
+                        print("📝 Renamed file to match project name: \(newURL.path)")
+                    } catch {
+                        print("⚠️ Could not rename file, saving to original location: \(error)")
                         url = originalFileURL
                     }
                 } else {
                     url = originalFileURL
-                    print("💾 Saving to original location: \(originalFileURL.path)")
                 }
             } else {
-                // Create filename from project name, preserving natural spacing
-                let filename = "\(viewModel.model.name).w2"
-                url = self.projectsDirectory.appendingPathComponent(filename)
-                viewModel.model.fileURL = url // Set the file URL for future saves
-                print("💾 Saving to default location: \(url.path)")
+                url = originalFileURL
+                print("💾 Saving to original location: \(originalFileURL.path)")
+            }
+        } else {
+            // Create filename from project name, preserving natural spacing
+            let filename = "\(viewModel.model.name).w2"
+            url = self.projectsDirectory.appendingPathComponent(filename)
+            viewModel.model.fileURL = url // Set the file URL for future saves
+            print("💾 Saving to default location: \(url.path)")
+        }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = .prettyPrinted
+
+            let data = try encoder.encode(viewModel)
+
+            // ATOMIC WRITE: Write to temporary file first, then replace atomically
+            let tempDirectory = url.deletingLastPathComponent()
+            let tempURL = tempDirectory.appendingPathComponent(".tmp_\(UUID().uuidString).w2")
+
+            try data.write(to: tempURL, options: .atomic)
+
+            // Replace the original file atomically
+            if FileManager.default.fileExists(atPath: url.path) {
+                _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+            } else {
+                try FileManager.default.moveItem(at: tempURL, to: url)
             }
 
-            do {
-                let encoder = JSONEncoder()
-                encoder.dateEncodingStrategy = .iso8601
-                encoder.outputFormatting = .prettyPrinted
-
-                let data = try encoder.encode(viewModel)
-                try data.write(to: url)
-
-                print("✅ Saved project: \(viewModel.model.name)")
-            } catch {
-                print("❌ Failed to save project \(viewModel.model.name): \(error)")
-            }
+            print("✅ Saved project: \(viewModel.model.name)")
+            return .success(())
+        } catch {
+            print("❌ Failed to save project \(viewModel.model.name): \(error)")
+            return .failure(error)
         }
     }
     
@@ -223,6 +274,25 @@ class ProjectManager: ObservableObject {
         project.updateModified()
         saveProject(project)
         updateRecentProjects(project)
+    }
+
+    /// Save project with user feedback on error
+    func saveProjectWithErrorHandling(_ viewModel: ProjectViewModel) {
+        viewModel.updateModified()
+        saveProject(viewModel) { result in
+            switch result {
+            case .success:
+                // Optionally show success feedback (currently silent)
+                ProjectAlertHelper.showSaveSuccess(projectName: viewModel.model.name)
+            case .failure(let error):
+                // Show error alert with retry option
+                ProjectAlertHelper.showSaveError(error, projectName: viewModel.model.name) {
+                    // Retry the save
+                    self.saveProjectWithErrorHandling(viewModel)
+                }
+            }
+        }
+        updateRecentProjects(viewModel)
     }
     
     func saveProjectAs(_ viewModel: ProjectViewModel) {
