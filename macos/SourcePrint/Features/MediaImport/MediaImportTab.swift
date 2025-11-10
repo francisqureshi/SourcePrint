@@ -329,83 +329,110 @@ struct WatchFolderSection: View {
     @ObservedObject var project: ProjectViewModel
 
     var body: some View {
-        GroupBox("🔍 Watch Folders") {
-            VStack(spacing: 12) {
-                // Master toggle
-                HStack {
-                    Toggle("Enable auto-import from watch folders", isOn: $project.watchFolderSettings.isEnabled)
-                        .toggleStyle(SwitchToggleStyle())
-                    Spacer()
-                }
+        HStack(spacing: 20) {
+            // Left side: Toggle
+            HStack(spacing: 12) {
+                Toggle("Watch Folders", isOn: $project.watchFolderSettings.isEnabled)
+                    .toggleStyle(SwitchToggleStyle())
+                    .labelsHidden()
 
-                // Grade folder row
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("📁 Grade Folder")
+                Text("Watch Folders")
+                    .font(.headline)
+            }
+
+            Spacer()
+
+            // Right side: Folder selections
+            HStack(spacing: 12) {
+                // Grade folder compact display
+                HStack(spacing: 8) {
+                    Text("Grade")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 40, alignment: .leading)
+
+                    if let folder = project.watchFolderSettings.primaryGradeFolder {
+                        Text(folder.lastPathComponent)
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(width: 120, alignment: .leading)
+
+                        Button(action: {
+                            project.watchFolderSettings.primaryGradeFolder = nil
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                                .imageScale(.small)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clear grade folder")
+                    } else {
+                        Text("No folder selected")
                             .font(.caption)
                             .foregroundColor(.secondary)
-
-                        if let folder = project.watchFolderSettings.primaryGradeFolder {
-                            Text(folder.lastPathComponent)
-                                .font(.caption)
-                                .foregroundColor(.primary)
-                            Text(folder.path)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        } else {
-                            Text("No folder selected")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .italic()
-                        }
+                            .frame(width: 120, alignment: .leading)
                     }
 
-                    Spacer()
-
-                    Button("Select Grade Folder") {
+                    Button("Select") {
                         selectGradeFolder()
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.regular)
+                    .controlSize(.small)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.appBackgroundBadge)
+                .cornerRadius(6)
 
-                // VFX folder row
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("🎬 VFX Folder")
+                // VFX folder compact display
+                HStack(spacing: 8) {
+                    Text("VFX")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 40, alignment: .leading)
+
+                    if let folder = project.watchFolderSettings.vfxFolder {
+                        Text(folder.lastPathComponent)
+                            .font(.caption)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(width: 120, alignment: .leading)
+
+                        Button(action: {
+                            project.watchFolderSettings.vfxFolder = nil
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                                .imageScale(.small)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clear VFX folder")
+                    } else {
+                        Text("No folder selected")
                             .font(.caption)
                             .foregroundColor(.secondary)
-
-                        if let folder = project.watchFolderSettings.vfxFolder {
-                            Text(folder.lastPathComponent)
-                                .font(.caption)
-                                .foregroundColor(.primary)
-                            Text(folder.path)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        } else {
-                            Text("No folder selected")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .italic()
-                        }
+                            .frame(width: 120, alignment: .leading)
                     }
 
-                    Spacer()
-
-                    Button("Select VFX Folder") {
+                    Button("Select") {
                         selectVFXFolder()
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.regular)
+                    .controlSize(.small)
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.appBackgroundBadge)
+                .cornerRadius(6)
             }
-            .padding(.vertical, 12)
         }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Color.appBackgroundSecondary)
+        .cornerRadius(8)
         .padding(.horizontal)
         .padding(.top, 8)
     }
