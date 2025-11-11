@@ -13,6 +13,7 @@ struct MediaImportTab: View {
     @ObservedObject var project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
     @EnvironmentObject var statusBarVM: StatusBarViewModel
+    @Binding var selectedTab: ProjectTab
     @State private var importingOCF = false
     @State private var isAnalyzing = false
     @State private var selectedOCFFiles: Set<String> = []
@@ -108,6 +109,28 @@ struct MediaImportTab: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently remove all offline media files from the project. This cannot be undone.")
+        }
+        .onAppear {
+            // Set status bar tab context
+            statusBarVM.currentTab = .media
+
+            // Wire up link button callback
+            statusBarVM.onLinkFiles = {
+                // Trigger linking
+                project.autoLinkingCallback?()
+
+                // Switch to linking tab
+                selectedTab = .linking
+            }
+
+            // Update file counts
+            updateStatusBarCounts()
+        }
+        .onChange(of: project.model.ocfFiles.count) { _ in
+            updateStatusBarCounts()
+        }
+        .onChange(of: project.model.segments.count) { _ in
+            updateStatusBarCounts()
         }
     }
     
@@ -206,6 +229,9 @@ struct MediaImportTab: View {
                 statusBarVM.completeOperation(summary: "Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") file\(mediaFiles.count == 1 ? "" : "s")")
 
                 NSLog("✅ Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") files")
+
+                // Trigger automatic linking after manual import
+                project.autoLinkingCallback?()
             }
         }
     }
@@ -320,6 +346,11 @@ struct MediaImportTab: View {
         project.removeSegments(fileNames)
         projectManager.saveProject(project)
         NSLog("🗑️ Removed \(fileNames.count) segment(s): \(fileNames.joined(separator: ", "))")
+    }
+
+    private func updateStatusBarCounts() {
+        statusBarVM.ocfFileCount = project.model.ocfFiles.count
+        statusBarVM.segmentFileCount = project.model.segments.count
     }
 }
 

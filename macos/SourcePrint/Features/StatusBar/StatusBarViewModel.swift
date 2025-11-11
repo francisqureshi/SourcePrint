@@ -18,6 +18,13 @@ enum OperationType: Equatable {
     case watchFolderImport
 }
 
+/// Active tab context for showing appropriate buttons
+enum TabContext: Equatable {
+    case overview
+    case media
+    case linking
+}
+
 /// Detailed progress information for expanded view
 struct DetailedProgress {
     let fileName: String?
@@ -77,6 +84,22 @@ class StatusBarViewModel: ObservableObject {
 
     /// Callback for canceling current operation
     var onCancel: (() -> Void)?
+
+    // MARK: - Tab Context
+
+    /// Current active tab
+    @Published var currentTab: TabContext = .overview
+
+    // MARK: - Link Button State
+
+    /// Callback for link files action
+    var onLinkFiles: (() -> Void)?
+
+    /// Number of OCF files available for linking
+    @Published var ocfFileCount: Int = 0
+
+    /// Number of segment files available for linking
+    @Published var segmentFileCount: Int = 0
 
     // MARK: - Progress Update Methods
 

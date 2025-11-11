@@ -194,9 +194,45 @@ struct StatusBarView: View {
         }
     }
 
-    // MARK: - Render Buttons
+    // MARK: - Action Buttons (Tab-Aware)
 
     private var renderButtons: some View {
+        HStack(spacing: 8) {
+            // Show different buttons based on active tab
+            switch viewModel.currentTab {
+            case .media:
+                linkButton
+            case .linking:
+                renderingButtons
+            case .overview:
+                EmptyView()
+            }
+        }
+    }
+
+    // MARK: - Link Button (Media Import Tab)
+
+    private var linkButton: some View {
+        Group {
+            if viewModel.ocfFileCount > 0 && viewModel.segmentFileCount > 0 {
+                Button(action: {
+                    viewModel.onLinkFiles?()
+                }) {
+                    Text("Link Files")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(minWidth: 100)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(accentColor)
+                .controlSize(.regular)
+                .help("Link \(viewModel.ocfFileCount) OCF file\(viewModel.ocfFileCount == 1 ? "" : "s") with \(viewModel.segmentFileCount) segment\(viewModel.segmentFileCount == 1 ? "" : "s")")
+            }
+        }
+    }
+
+    // MARK: - Render Buttons (Linking Tab)
+
+    private var renderingButtons: some View {
         HStack(spacing: 8) {
             // Primary render button (changes based on selection)
             if viewModel.totalRenderableCount > 0 {

@@ -30,6 +30,10 @@ struct LinkingTab: View {
         }
         .onAppear {
             generateTimelineVisualizationFromExistingData()
+            // Set up auto-linking callback
+            project.autoLinkingCallback = performLinkingIfNeeded
+            // Set status bar tab context
+            statusBarVM.currentTab = .linking
         }
     }
 
@@ -296,6 +300,35 @@ struct LinkingTab: View {
             blankRushTask = nil
             isLinking = false
             statusBarVM.reset()
+        }
+    }
+
+    /// Perform linking with safety checks and debouncing
+    private func performLinkingIfNeeded() {
+        // Safety checks
+        guard !isLinking else {
+            NSLog("⏸️ Auto-linking skipped: already linking")
+            return
+        }
+
+        guard !project.model.ocfFiles.isEmpty && !project.model.segments.isEmpty else {
+            NSLog("⏸️ Auto-linking skipped: need both OCF files and segments")
+            return
+        }
+
+        // Debounce: wait 2 seconds before triggering (allows batch imports to complete)
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+
+            // Check again after debounce in case conditions changed
+            guard !isLinking && !project.model.ocfFiles.isEmpty && !project.model.segments.isEmpty else {
+                return
+            }
+
+            await MainActor.run {
+                NSLog("🔗 Auto-linking triggered")
+                performLinking()
+            }
         }
     }
 }

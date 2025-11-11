@@ -438,15 +438,10 @@ struct LinkingResultsView: View {
 
                 Spacer()
 
-                HStack(spacing: 12) {
-                    if let performLinking = onPerformLinking {
-                        Button("Run Auto-Linking") {
-                            performLinking()
-                        }
-                        .buttonStyle(CompressorButtonStyle(prominent: true))
-                        .disabled(project.model.ocfFiles.isEmpty || project.model.segments.isEmpty)
-                    }
-                }
+                // Auto-linking happens automatically after import
+                Text("Linking will run automatically when files are imported")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
             .padding()
 
@@ -619,37 +614,6 @@ struct LinkingResultsView: View {
 
                         Spacer()
 
-                        // Action buttons
-                        HStack(spacing: 12) {
-                            if let performLinking = onPerformLinking {
-                                Button("Run Auto-Linking") {
-                                    performLinking()
-                                }
-                                .buttonStyle(CompressorButtonStyle(prominent: true))
-                                .disabled(
-                                    project.model.ocfFiles.isEmpty || project.model.segments.isEmpty
-                                )
-                            }
-
-                            if !confidentlyLinkedParents.isEmpty {
-                                Group {
-                                    Button("Select All") {
-                                        selectedOCFParents = Set(
-                                            confidentlyLinkedParents.map { $0.ocf.fileName })
-                                    }
-                                    .keyboardShortcut("a", modifiers: .command)
-
-                                    Button("Clear Selection") {
-                                        selectedOCFParents.removeAll()
-                                    }
-                                    .keyboardShortcut(.escape, modifiers: [])
-                                    .opacity(selectedOCFParents.isEmpty ? 0 : 1)
-                                    .disabled(selectedOCFParents.isEmpty)
-                                }
-                                .buttonStyle(CompressorButtonStyle())
-                            }
-                        }
-
                         // Show toggle button here when drawer is hidden
                         if !showUnmatchedDrawer {
                             Button {
@@ -680,6 +644,10 @@ struct LinkingResultsView: View {
                     }
                 }
                 .padding()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectedOCFParents.removeAll()
+                }
 
                 // Use ScrollView for true card layout
                 ScrollView {
