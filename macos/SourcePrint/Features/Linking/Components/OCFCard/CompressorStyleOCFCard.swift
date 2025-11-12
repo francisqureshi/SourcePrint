@@ -226,6 +226,10 @@ struct CompressorStyleOCFCard: View {
                     )
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        handleCardSelection()
+                    }
                 }
 
                 // Render Log Section
@@ -233,6 +237,10 @@ struct CompressorStyleOCFCard: View {
                     project: project,
                     ocfFileName: parent.ocf.fileName
                 )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    handleCardSelection()
+                }
 
                 // Linked segments
                 segmentsListView
@@ -245,6 +253,10 @@ struct CompressorStyleOCFCard: View {
         .padding(.horizontal, 4)
         .padding(.bottom, 4)
         .background(isSelected ? Color.accentColor.opacity(0.3) : Color.appBackgroundSecondary)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            handleCardSelection()
+        }
     }
 
     private var segmentsListView: some View {

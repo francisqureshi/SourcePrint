@@ -386,28 +386,7 @@ struct LinkingResultsView: View {
     // - renderOCFInQueue() -> RenderService.composeVideo()
 
     var body: some View {
-        mainContent
-            .focusable()
-            .focusEffectDisabled()
-            .onKeyPress(.rightArrow) {
-                expandSelectedCards()
-                return .handled
-            }
-            .onKeyPress(.leftArrow) {
-                collapseSelectedCards()
-                return .handled
-            }
-            .onKeyPress(.downArrow) {
-                handleDownArrow()
-                return .handled
-            }
-            .onKeyPress(.upArrow) {
-                handleUpArrow()
-                return .handled
-            }
-            .onAppear {
-                setupView()
-            }
+        contentWithKeyboardHandling
             .onChange(of: renderQueueManager.lastCompletedResult) { _, result in
                 handleRenderCompletedChange(result)
             }
@@ -431,6 +410,50 @@ struct LinkingResultsView: View {
             }
             .onChange(of: confidentlyLinkedParents.count) { _, _ in
                 updateRenderButtonState()
+            }
+    }
+
+    private var contentWithKeyboardHandling: some View {
+        mainContent
+            .focusable()
+            .focusEffectDisabled()
+            .onKeyPress(.rightArrow) {
+                expandSelectedCards()
+                return .handled
+            }
+            .onKeyPress(.leftArrow) {
+                collapseSelectedCards()
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                handleDownArrow()
+                return .handled
+            }
+            .onKeyPress(.upArrow) {
+                handleUpArrow()
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                // Deselect all
+                selectedOCFParents.removeAll()
+                selectedLinkedFiles.removeAll()
+                selectedUnmatchedFiles.removeAll()
+                return .handled
+            }
+            .onKeyPress(keys: ["a"]) { press in
+                // Check if Command key is pressed
+                if press.modifiers.contains(.command) {
+                    // Select all OCF parents
+                    selectedOCFParents = Set(confidentlyLinkedParents.map { $0.ocf.fileName })
+                    selectedLinkedFiles.removeAll()
+                    selectedUnmatchedFiles.removeAll()
+                    navigationContext = .ocfList
+                    return .handled
+                }
+                return .ignored
+            }
+            .onAppear {
+                setupView()
             }
     }
 
@@ -695,47 +718,61 @@ struct LinkingResultsView: View {
                 .padding(.bottom, 8)
 
                 // Use ScrollView for true card layout
-                ScrollView {
-                    VStack(spacing: 12) {
-                        ForEach(
-                            Array(filteredConfidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName
-                        ) { index, parent in
-                            CompressorStyleOCFCard(
-                                parent: parent,
-                                ocfIndex: index,
-                                project: project,
-                                timelineVisualizationData: timelineVisualizationData,
-                                selectedLinkedFiles: $selectedLinkedFiles,
-                                selectedOCFParents: $selectedOCFParents,
-                                focusedOCFIndex: $focusedOCFIndex,
-                                navigationContext: $navigationContext,
-                                projectManager: projectManager,
-                                getSelectedParents: getSelectedParents,
-                                allParents: confidentlyLinkedParents,
-                                currentlyRenderingOCF: currentlyRenderingOCF,
-                                renderProgress: renderQueueManager.currentItem?.ocfFileName
-                                    == parent.ocf.fileName
-                                    ? renderQueueManager.currentItem?.progress : nil,
-                                renderSegmentProgress: renderQueueManager.currentItem?.ocfFileName
-                                    == parent.ocf.fileName
-                                    ? renderQueueManager.currentSegmentProgress : nil,
-                                onRenderSingle: {
-                                    renderSingle(parent: parent)
-                                }
-                            )
-                            .contextMenu {
-                                OCFParentContextMenu(
+                ZStack {
+                    // Background layer to capture taps in empty space
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Clicking in empty space deselects all
+                            selectedOCFParents.removeAll()
+                            selectedLinkedFiles.removeAll()
+                            selectedUnmatchedFiles.removeAll()
+                        }
+
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            ForEach(
+                                Array(filteredConfidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName
+                            ) { index, parent in
+                                CompressorStyleOCFCard(
                                     parent: parent,
+                                    ocfIndex: index,
                                     project: project,
+                                    timelineVisualizationData: timelineVisualizationData,
+                                    selectedLinkedFiles: $selectedLinkedFiles,
+                                    selectedOCFParents: $selectedOCFParents,
+                                    focusedOCFIndex: $focusedOCFIndex,
+                                    navigationContext: $navigationContext,
                                     projectManager: projectManager,
-                                    selectedParents: getSelectedParents(),
-                                    allParents: confidentlyLinkedParents
+                                    getSelectedParents: getSelectedParents,
+                                    allParents: confidentlyLinkedParents,
+                                    currentlyRenderingOCF: currentlyRenderingOCF,
+                                    renderProgress: renderQueueManager.currentItem?.ocfFileName
+                                        == parent.ocf.fileName
+                                        ? renderQueueManager.currentItem?.progress : nil,
+                                    renderSegmentProgress: renderQueueManager.currentItem?.ocfFileName
+                                        == parent.ocf.fileName
+                                        ? renderQueueManager.currentSegmentProgress : nil,
+                                    onRenderSingle: {
+                                        renderSingle(parent: parent)
+                                    }
                                 )
+                                .contextMenu {
+                                    OCFParentContextMenu(
+                                        parent: parent,
+                                        project: project,
+                                        projectManager: projectManager,
+                                        selectedParents: getSelectedParents(),
+                                        allParents: confidentlyLinkedParents
+                                    )
+                                }
                             }
                         }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .top)
                     }
-                    .padding(8)
                 }
+                .frame(maxHeight: .infinity)
             }
             .frame(minWidth: 400)
 
