@@ -85,9 +85,11 @@ public enum ValidationSeverity {
 /// Validation result containing all issues found
 public struct ProjectValidationResult {
     public let issues: [ProjectValidationIssue]
+    public let shouldClearLinkingResult: Bool
 
-    public init(issues: [ProjectValidationIssue]) {
+    public init(issues: [ProjectValidationIssue], shouldClearLinkingResult: Bool = false) {
         self.issues = issues
+        self.shouldClearLinkingResult = shouldClearLinkingResult
     }
 
     public var isValid: Bool {
@@ -117,6 +119,7 @@ public struct ProjectValidator {
     /// Validates a project model after loading from disk
     public static func validate(_ model: ProjectModel) -> ProjectValidationResult {
         var issues: [ProjectValidationIssue] = []
+        var shouldClearLinkingResult = false
 
         // Validate directories
         issues.append(contentsOf: validateDirectories(model))
@@ -125,12 +128,17 @@ public struct ProjectValidator {
         issues.append(contentsOf: validateMediaFiles(model))
 
         // Validate linking result
-        issues.append(contentsOf: validateLinkingResult(model))
+        let linkingIssues = validateLinkingResult(model)
+        if !linkingIssues.isEmpty {
+            // If linking result is stale, clear it silently instead of showing warnings
+            shouldClearLinkingResult = true
+            NSLog("⚠️ Linking result is stale - will be cleared automatically")
+        }
 
         // Validate blank rush status
         issues.append(contentsOf: validateBlankRushStatus(model))
 
-        return ProjectValidationResult(issues: issues)
+        return ProjectValidationResult(issues: issues, shouldClearLinkingResult: shouldClearLinkingResult)
     }
 
     // MARK: - Private Validation Methods

@@ -12,47 +12,39 @@ import SourcePrintCore
 /// Helper for showing project-related alerts
 struct ProjectAlertHelper {
 
-    /// Show validation warnings/errors in an alert
+    /// Show validation warnings/errors in a custom window with fixed height
     static func showValidationAlert(for result: ProjectValidationResult, projectName: String) {
         guard !result.isValid else { return }
 
-        let alert = NSAlert()
-        alert.alertStyle = result.hasErrors ? .critical : .warning
-        alert.messageText = result.hasErrors ? "Project Loading Issues" : "Project Validation Warnings"
+        // Get screen height and calculate 40%
+        guard let screenHeight = NSScreen.main?.frame.height else { return }
+        let windowHeight = screenHeight * 0.4
+        let windowWidth: CGFloat = 600
 
-        var message = "The project '\(projectName)' was loaded but has the following issues:\n\n"
-
-        // Show errors first
-        if result.hasErrors {
-            message += "ERRORS:\n"
-            for error in result.errors {
-                message += "• \(error.message)\n"
-                message += "  → \(error.recoveryAction)\n\n"
+        // Create the content view
+        let contentView = ValidationAlertView(
+            result: result,
+            projectName: projectName,
+            onClose: {
+                // Window will be closed by the hosting window controller
             }
-        }
+        )
 
-        // Then warnings
-        if result.hasWarnings {
-            message += result.hasErrors ? "\nWARNINGS:\n" : ""
-            for warning in result.warnings {
-                message += "• \(warning.message)\n"
-                message += "  → \(warning.recoveryAction)\n\n"
-            }
-        }
+        // Create a hosting controller
+        let hostingController = NSHostingController(rootView: contentView)
 
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
+        // Create window
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = result.hasErrors ? "Project Loading Issues" : "Project Validation Warnings"
+        window.styleMask = [.titled, .closable]
+        window.setContentSize(NSSize(width: windowWidth, height: windowHeight))
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.level = .floating
 
-        if result.hasErrors {
-            alert.addButton(withTitle: "View Details")
-        }
-
-        let response = alert.runModal()
-
-        if response == .alertSecondButtonReturn {
-            // Show detailed issue list
-            showDetailedValidationIssues(result, projectName: projectName)
-        }
+        // Show the window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private static func showDetailedValidationIssues(_ result: ProjectValidationResult, projectName: String) {
@@ -92,5 +84,133 @@ struct ProjectAlertHelper {
         // Could use UserNotifications or a subtle toast
         // For now, just log - we don't want to be too noisy
         NSLog("✅ Successfully saved project: \(projectName)")
+    }
+}
+
+// MARK: - Custom Validation Alert View
+
+struct ValidationAlertView: View {
+    let result: ProjectValidationResult
+    let projectName: String
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Image(systemName: result.hasErrors ? "exclamationmark.triangle.fill" : "exclamationmark.circle.fill")
+                    .font(.title)
+                    .foregroundColor(result.hasErrors ? .red : .orange)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.hasErrors ? "Project Loading Issues" : "Project Validation Warnings")
+                        .font(.headline)
+                    Text("The project '\(projectName)' was loaded but has the following issues:")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .background(Color.appBackgroundSecondary)
+
+            Divider()
+
+            // Scrollable content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Show errors first
+                    if result.hasErrors {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("ERRORS")
+                                .font(.headline)
+                                .foregroundColor(.red)
+
+                            ForEach(Array(result.errors.enumerated()), id: \.offset) { index, error in
+                                ValidationIssueRow(
+                                    icon: "xmark.circle.fill",
+                                    iconColor: .red,
+                                    message: error.message,
+                                    recoveryAction: error.recoveryAction
+                                )
+                            }
+                        }
+                        .padding(.bottom, 8)
+                    }
+
+                    // Then warnings
+                    if result.hasWarnings {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(result.hasErrors ? "WARNINGS" : "")
+                                .font(.headline)
+                                .foregroundColor(.orange)
+                                .opacity(result.hasErrors ? 1.0 : 0.0)
+
+                            ForEach(Array(result.warnings.enumerated()), id: \.offset) { index, warning in
+                                ValidationIssueRow(
+                                    icon: "exclamationmark.triangle.fill",
+                                    iconColor: .orange,
+                                    message: warning.message,
+                                    recoveryAction: warning.recoveryAction
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding()
+            }
+            .background(Color.appBackground)
+
+            Divider()
+
+            // Footer with close button
+            HStack {
+                Spacer()
+                Button("Close") {
+                    NSApp.keyWindow?.close()
+                    onClose()
+                }
+                .keyboardShortcut(.defaultAction)
+                .controlSize(.large)
+            }
+            .padding()
+            .background(Color.appBackgroundSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Validation Issue Row
+
+struct ValidationIssueRow: View {
+    let icon: String
+    let iconColor: Color
+    let message: String
+    let recoveryAction: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(iconColor)
+                .font(.title3)
+                .frame(width: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message)
+                    .font(.body)
+                    .foregroundColor(.primary)
+
+                Text(recoveryAction)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 8)
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.appBackgroundTertiary.opacity(0.5))
+        .cornerRadius(6)
     }
 }

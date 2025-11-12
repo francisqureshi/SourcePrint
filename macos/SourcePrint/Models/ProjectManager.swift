@@ -112,6 +112,14 @@ class ProjectManager: ObservableObject {
                 let validationResult = ProjectValidator.validate(viewModel.model)
                 viewModel.validationResult = validationResult
 
+                // Clear stale linking result if needed
+                if validationResult.shouldClearLinkingResult {
+                    NSLog("🔄 Clearing stale linking result")
+                    viewModel.model.linkingResult = nil
+                    viewModel.model.updateModified()
+                    saveProject(viewModel)
+                }
+
                 if !validationResult.isValid {
                     NSLog("⚠️ Project validation found \(validationResult.issues.count) issue(s):")
                     for issue in validationResult.issues {
