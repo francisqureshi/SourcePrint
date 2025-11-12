@@ -116,8 +116,9 @@ struct MediaImportTab: View {
 
             // Wire up link button callback
             statusBarVM.onLinkFiles = {
-                // Trigger linking
-                project.autoLinkingCallback?()
+                // Call performLinking directly for immediate execution
+                // (autoLinkingCallback uses debouncing for automatic triggers)
+                project.performLinkingCallback?()
 
                 // Switch to linking tab
                 selectedTab = .linking

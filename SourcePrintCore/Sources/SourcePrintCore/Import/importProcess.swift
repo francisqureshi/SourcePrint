@@ -327,6 +327,13 @@ public class MediaAnalyzer {
                     // Extract timecode using same approach as ffmpeg script
                     sourceTimecode = extractTimecode(from: fmtCtx)
 
+                    // If no timecode found, assign default 00:00:00:00 (or 00:00:00;00 for drop frame)
+                    if sourceTimecode == nil, let fps = frameRate {
+                        let isDF = FrameRateManager.isDropFrameRate(frameRate: fps)
+                        sourceTimecode = isDF ? "00:00:00;00" : "00:00:00:00"
+                        print("    ⚠️ No timecode metadata found - using default: \(sourceTimecode!)")
+                    }
+
                     // Detect drop frame from timecode format and frame rate
                     if let timecode = sourceTimecode, let floatFps = frameRateFloat {
                         isDropFrame = detectDropFrame(timecode: timecode, frameRate: floatFps)

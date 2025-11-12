@@ -83,22 +83,39 @@ public class SegmentOCFLinker {
     
     public init() {}
     
-    public func linkSegments(_ segments: [MediaFileInfo], withOCFParents ocfs: [MediaFileInfo]) -> LinkingResult {
+    public func linkSegments(_ segments: [MediaFileInfo], withOCFParents ocfs: [MediaFileInfo], manualOverrides: [String: String] = [:]) -> LinkingResult {
         print("🔗 Linking \(segments.count) segments with \(ocfs.count) OCF parent files...")
-        
+        if !manualOverrides.isEmpty {
+            print("  📌 Using \(manualOverrides.count) manual link override(s)")
+        }
+
         // Dictionary to group children by OCF parent (using full path as unique key)
         var ocfToChildren: [String: [LinkedSegment]] = [:]
         var unmatchedSegments: [MediaFileInfo] = []
         var usedOCFs: Set<String> = []
-        
+
         // Initialize dictionary with empty arrays for all OCFs (using full path as key)
         for ocf in ocfs {
             ocfToChildren[ocf.url.path] = []
         }
-        
+
         // Link each segment to its best parent OCF
         for segment in segments {
-            if let (matchedOCF, confidence, method) = findBestMatch(for: segment, in: ocfs) {
+            // Check for manual override first
+            if let manualOCFName = manualOverrides[segment.fileName],
+               let manualOCF = ocfs.first(where: { $0.fileName == manualOCFName }) {
+                // Manual override exists - use it with high confidence
+                let linkedSegment = LinkedSegment(
+                    segment: segment,
+                    linkConfidence: .high,
+                    linkMethod: "manual"
+                )
+
+                ocfToChildren[manualOCF.url.path]?.append(linkedSegment)
+                usedOCFs.insert(manualOCF.fileName)
+
+                print("  📌 \(segment.fileName) → \(manualOCF.fileName) (manual override)")
+            } else if let (matchedOCF, confidence, method) = findBestMatch(for: segment, in: ocfs) {
                 let linkedSegment = LinkedSegment(
                     segment: segment,
                     linkConfidence: confidence,

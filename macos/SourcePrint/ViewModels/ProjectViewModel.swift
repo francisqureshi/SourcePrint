@@ -48,8 +48,11 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     /// Project validation result (UI-only, not persisted)
     @Published var validationResult: ProjectValidationResult?
 
-    /// Callback for automatic linking (set by LinkingTab)
+    /// Callback for automatic linking with debouncing (set by LinkingTab)
     var autoLinkingCallback: (() -> Void)?
+
+    /// Callback for manual linking without debouncing (set by LinkingTab)
+    var performLinkingCallback: (() -> Void)?
 
     /// Watch folder service instance
     private var watchFolderService: WatchFolderService?
@@ -171,6 +174,25 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     func updateBlankRushStatus(ocfFileName: String, status: BlankRushStatus) {
         model.blankRushStatus[ocfFileName] = status
         model.updateModified()
+    }
+
+    // MARK: - Manual Link Overrides
+
+    /// Add or update a manual link override for a segment
+    func setManualLinkOverride(segmentFileName: String, ocfFileName: String) {
+        model.manualLinkOverrides[segmentFileName] = ocfFileName
+        model.updateModified()
+    }
+
+    /// Remove a manual link override
+    func removeManualLinkOverride(segmentFileName: String) {
+        model.manualLinkOverrides.removeValue(forKey: segmentFileName)
+        model.updateModified()
+    }
+
+    /// Get the manual override for a segment, if any
+    func getManualLinkOverride(segmentFileName: String) -> String? {
+        return model.manualLinkOverrides[segmentFileName]
     }
 
     func addPrintRecord(_ record: SourcePrintCore.PrintRecord) {

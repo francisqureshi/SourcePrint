@@ -24,6 +24,11 @@ public struct ProjectModel: Codable, Identifiable {
     public var printHistory: [PrintRecord]
     public var printStatus: [String: PrintStatus]
 
+    // MARK: - Manual Link Overrides
+    /// Manual user overrides for low confidence matches
+    /// Maps segment fileName -> OCF fileName
+    public var manualLinkOverrides: [String: String]
+
     // MARK: - Project Settings
     public var outputDirectory: URL
     public var blankRushDirectory: URL
@@ -47,6 +52,7 @@ public struct ProjectModel: Codable, Identifiable {
         lastPrintDate: Date? = nil,
         printHistory: [PrintRecord] = [],
         printStatus: [String: PrintStatus] = [:],
+        manualLinkOverrides: [String: String] = [:],
         outputDirectory: URL,
         blankRushDirectory: URL,
         fileURL: URL? = nil
@@ -66,6 +72,7 @@ public struct ProjectModel: Codable, Identifiable {
         self.lastPrintDate = lastPrintDate
         self.printHistory = printHistory
         self.printStatus = printStatus
+        self.manualLinkOverrides = manualLinkOverrides
         self.outputDirectory = outputDirectory
         self.blankRushDirectory = blankRushDirectory
         self.fileURL = fileURL
@@ -159,9 +166,35 @@ public struct ProjectModel: Codable, Identifiable {
         case lastPrintDate
         case printHistory
         case printStatus
+        case manualLinkOverrides
         case outputDirectory
         case blankRushDirectory
         case fileURL
+    }
+
+    // Custom decoder for backwards compatibility
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        createdDate = try container.decode(Date.self, forKey: .createdDate)
+        lastModified = try container.decode(Date.self, forKey: .lastModified)
+        ocfFiles = try container.decode([MediaFileInfo].self, forKey: .ocfFiles)
+        segments = try container.decode([MediaFileInfo].self, forKey: .segments)
+        linkingResult = try container.decodeIfPresent(LinkingResult.self, forKey: .linkingResult)
+        blankRushStatus = try container.decode([String: BlankRushStatus].self, forKey: .blankRushStatus)
+        segmentModificationDates = try container.decode([String: Date].self, forKey: .segmentModificationDates)
+        segmentFileSizes = try container.decode([String: Int64].self, forKey: .segmentFileSizes)
+        offlineMediaFiles = try container.decode(Set<String>.self, forKey: .offlineMediaFiles)
+        offlineFileMetadata = try container.decode([String: OfflineFileMetadata].self, forKey: .offlineFileMetadata)
+        lastPrintDate = try container.decodeIfPresent(Date.self, forKey: .lastPrintDate)
+        printHistory = try container.decode([PrintRecord].self, forKey: .printHistory)
+        printStatus = try container.decode([String: PrintStatus].self, forKey: .printStatus)
+        // Decode manual link overrides with default for old files
+        manualLinkOverrides = try container.decodeIfPresent([String: String].self, forKey: .manualLinkOverrides) ?? [:]
+        outputDirectory = try container.decode(URL.self, forKey: .outputDirectory)
+        blankRushDirectory = try container.decode(URL.self, forKey: .blankRushDirectory)
+        fileURL = try container.decodeIfPresent(URL.self, forKey: .fileURL)
     }
 }
 

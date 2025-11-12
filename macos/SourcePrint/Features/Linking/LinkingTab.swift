@@ -30,8 +30,10 @@ struct LinkingTab: View {
         }
         .onAppear {
             generateTimelineVisualizationFromExistingData()
-            // Set up auto-linking callback
+            // Set up auto-linking callback (with debouncing)
             project.autoLinkingCallback = performLinkingIfNeeded
+            // Set up manual linking callback (immediate, no debouncing)
+            project.performLinkingCallback = performLinking
             // Set status bar tab context
             statusBarVM.currentTab = .linking
         }
@@ -88,7 +90,11 @@ struct LinkingTab: View {
             }
 
             let linker = SegmentOCFLinker()
-            let result = linker.linkSegments(project.model.segments, withOCFParents: project.model.ocfFiles)
+            let result = linker.linkSegments(
+                project.model.segments,
+                withOCFParents: project.model.ocfFiles,
+                manualOverrides: project.model.manualLinkOverrides
+            )
 
             await MainActor.run {
                 statusBarVM.updateLinkingProgress(

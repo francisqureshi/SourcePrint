@@ -853,8 +853,17 @@ struct LinkingResultsView: View {
                             Section("Low Confidence Matches (\(lowConfidenceSegments.count))") {
                                 ForEach(lowConfidenceSegments, id: \.segment.fileName) {
                                     linkedSegment in
-                                    LowConfidenceSegmentRowView(linkedSegment: linkedSegment)
-                                        .tag(linkedSegment.segment.fileName)
+                                    LowConfidenceSegmentRowView(
+                                        linkedSegment: linkedSegment,
+                                        availableOCFs: project.model.ocfFiles,
+                                        project: project,
+                                        onLinkConfirmed: {
+                                            // Trigger re-linking to apply manual override
+                                            project.performLinkingCallback?()
+                                        }
+                                    )
+                                    .environmentObject(projectManager)
+                                    .tag(linkedSegment.segment.fileName)
                                 }
                             }
                         }

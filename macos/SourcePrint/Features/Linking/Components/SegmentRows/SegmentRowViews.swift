@@ -153,6 +153,13 @@ struct TreeLinkedSegmentRowView: View {
 
 struct LowConfidenceSegmentRowView: View {
     let linkedSegment: LinkedSegment
+    let availableOCFs: [MediaFileInfo]
+    let project: ProjectViewModel
+    @EnvironmentObject var projectManager: ProjectManager
+    var onLinkConfirmed: (() -> Void)?
+
+    @State private var selectedOCFName: String?
+    @State private var isLinked: Bool = false
 
     // Check if this is a VFX shot
     private var isVFXShot: Bool {
@@ -160,71 +167,184 @@ struct LowConfidenceSegmentRowView: View {
     }
 
     var body: some View {
-        HStack {
-            Image(systemName: "questionmark.circle.fill")
-                .foregroundColor(.red)
-                .frame(width: 16)
-
-            Image(systemName: "film")
-                .foregroundColor(AppTheme.segmentColor)
-                .frame(width: 16)
-
-            // VFX indicator
-            if isVFXShot {
-                Image(systemName: "wand.and.stars")
-                    .foregroundColor(.purple)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "questionmark.circle.fill")
+                    .foregroundColor(.red)
                     .frame(width: 16)
-            }
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(linkedSegment.segment.fileName)
-                        .font(.body)
+                Image(systemName: "film")
+                    .foregroundColor(AppTheme.segmentColor)
+                    .frame(width: 16)
 
-                    // VFX badge
-                    if isVFXShot {
-                        Text("VFX")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Color.appBackgroundBadge)
-                            .foregroundColor(Color.appVfxShot)
-                            .cornerRadius(3)
-                    }
+                // VFX indicator
+                if isVFXShot {
+                    Image(systemName: "wand.and.stars")
+                        .foregroundColor(.purple)
+                        .frame(width: 16)
                 }
 
-                HStack {
-                    HStack(spacing: 4) {
-                        ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) { badge in
-                            Text(badge)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(linkedSegment.segment.fileName)
+                            .font(.body)
+
+                        // VFX badge
+                        if isVFXShot {
+                            Text("VFX")
                                 .font(.caption2)
+                                .fontWeight(.medium)
                                 .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
+                                .padding(.vertical, 1)
                                 .background(Color.appBackgroundBadge)
+                                .foregroundColor(Color.appVfxShot)
                                 .cornerRadius(3)
                         }
                     }
-                    if let startTC = linkedSegment.segment.sourceTimecode,
-                       let endTC = linkedSegment.segment.endTimecode {
-                        Text("•")
-                        Text("\(startTC) - \(endTC)")
-                            .monospacedDigit()
+
+                    HStack {
+                        HStack(spacing: 4) {
+                            ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) { badge in
+                                Text(badge)
+                                    .font(.caption2)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(Color.appBackgroundBadge)
+                                    .cornerRadius(3)
+                            }
+                        }
+                        if let startTC = linkedSegment.segment.sourceTimecode,
+                           let endTC = linkedSegment.segment.endTimecode {
+                            Text("•")
+                            Text("\(startTC) - \(endTC)")
+                                .monospacedDigit()
+                        }
                     }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 }
-                .font(.caption)
-                .foregroundColor(.secondary)
+
+                Spacer()
             }
 
-            Spacer()
+            // Resolution controls
+            HStack(spacing: 12) {
+                if isLinked, let ocfName = selectedOCFName {
+                    // Show linked status with edit button
+                    HStack(spacing: 8) {
+                        Image(systemName: "link")
+                            .foregroundColor(.green)
+                            .font(.system(size: 12))
 
-            Text("Needs Review")
-                .font(.caption)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.red.opacity(0.2))
-                .cornerRadius(4)
+                        Text("Linked to: \(ocfName)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Button(action: {
+                            isLinked = false
+                        }) {
+                            Text("Change")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.blue)
+                    }
+                } else {
+                    // Show dropdown and link button
+                    HStack(spacing: 8) {
+                        Text("Link to:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Picker("", selection: $selectedOCFName) {
+                            Text("Select OCF...").tag(nil as String?)
+                            ForEach(availableOCFs, id: \.fileName) { ocf in
+                                Text(ocf.fileName).tag(ocf.fileName as String?)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 200)
+
+                        Button(action: {
+                            if let ocfName = selectedOCFName {
+                                project.setManualLinkOverride(
+                                    segmentFileName: linkedSegment.segment.fileName,
+                                    ocfFileName: ocfName
+                                )
+                                projectManager.saveProject(project)
+                                isLinked = true
+                                NSLog("📌 Manual link: \(linkedSegment.segment.fileName) → \(ocfName)")
+
+                                // Trigger re-linking to move segment to linked OCF
+                                onLinkConfirmed?()
+                            }
+                        }) {
+                            Text("Confirm Link")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(selectedOCFName == nil)
+                    }
+                }
+            }
+            .padding(.leading, 32)
         }
+        .onAppear {
+            // Check if there's already a manual override
+            if let existingOverride = project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) {
+                selectedOCFName = existingOverride
+                isLinked = true
+            } else {
+                // Suggest best match from available OCFs
+                selectedOCFName = suggestBestMatch()
+            }
+        }
+    }
+
+    private func suggestBestMatch() -> String? {
+        // Find OCF with matching resolution, frame rate, and filename similarity
+        guard let segmentRes = linkedSegment.segment.effectiveDisplayResolution,
+              let segmentFR = linkedSegment.segment.frameRate else {
+            return availableOCFs.first?.fileName
+        }
+
+        let segmentNameLower = linkedSegment.segment.fileNameLower
+
+        // First try: Look for filename match + tech specs match
+        let filenameMatch = availableOCFs.first { ocf in
+            guard let ocfRes = ocf.effectiveDisplayResolution,
+                  let ocfFR = ocf.frameRate else {
+                return false
+            }
+
+            let ocfBaseName = (ocf.fileName as NSString).deletingPathExtension
+            let ocfBaseNameLower = ocfBaseName.lowercased()
+            let hasFilenameMatch = segmentNameLower.contains(ocfBaseNameLower)
+
+            return hasFilenameMatch &&
+                   segmentRes.width == ocfRes.width &&
+                   segmentRes.height == ocfRes.height &&
+                   FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
+        }
+
+        if let match = filenameMatch {
+            return match.fileName
+        }
+
+        // Second try: Just tech specs match (no filename requirement)
+        let techMatch = availableOCFs.first { ocf in
+            guard let ocfRes = ocf.effectiveDisplayResolution,
+                  let ocfFR = ocf.frameRate else {
+                return false
+            }
+
+            return segmentRes.width == ocfRes.width &&
+                   segmentRes.height == ocfRes.height &&
+                   FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
+        }
+
+        return techMatch?.fileName ?? availableOCFs.first?.fileName
     }
 }
 
