@@ -68,6 +68,7 @@ struct LinkingResultsView: View {
     @State private var selectedUnmatchedFiles: Set<String> = []
     @State private var selectedOCFParents: Set<String> = []
     @State private var showUnmatchedDrawer = true
+    @State private var searchText: String = ""
 
     // Unified navigation state
     enum NavigationContext {
@@ -96,6 +97,16 @@ struct LinkingResultsView: View {
         }
     }
 
+    var filteredConfidentlyLinkedParents: [OCFParent] {
+        if searchText.isEmpty {
+            return confidentlyLinkedParents
+        } else {
+            return confidentlyLinkedParents.filter { parent in
+                parent.ocf.fileName.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+
     var lowConfidenceSegments: [LinkedSegment] {
         guard let linkingResult = linkingResult else { return [] }
         return linkingResult.ocfParents.flatMap { parent in
@@ -107,6 +118,10 @@ struct LinkingResultsView: View {
 
     var totalConfidentSegments: Int {
         return confidentlyLinkedParents.reduce(0) { $0 + $1.childCount }
+    }
+
+    var filteredSegmentCount: Int {
+        return filteredConfidentlyLinkedParents.reduce(0) { $0 + $1.childCount }
     }
 
     var totalUnmatchedItems: Int {
@@ -608,7 +623,9 @@ struct LinkingResultsView: View {
             VStack(alignment: .leading) {
                 VStack(spacing: 8) {
                     HStack {
-                        Text("Linked Files (\(totalConfidentSegments) segments)")
+                        Text(searchText.isEmpty
+                            ? "Linked Files (\(totalConfidentSegments) segments)"
+                            : "Linked Files (\(filteredSegmentCount) of \(totalConfidentSegments) segments)")
                             .font(.headline)
                             .monospacedDigit()
 
@@ -649,11 +666,39 @@ struct LinkingResultsView: View {
                     selectedOCFParents.removeAll()
                 }
 
+                // Search bar
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 14))
+
+                    TextField("Search OCF files...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+
+                    if !searchText.isEmpty {
+                        Button(action: {
+                            searchText = ""
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                                .font(.system(size: 14))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.appBackgroundTertiary)
+                .cornerRadius(6)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
                 // Use ScrollView for true card layout
                 ScrollView {
                     VStack(spacing: 12) {
                         ForEach(
-                            Array(confidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName
+                            Array(filteredConfidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName
                         ) { index, parent in
                             CompressorStyleOCFCard(
                                 parent: parent,
