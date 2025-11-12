@@ -14,6 +14,8 @@ struct TreeLinkedSegmentRowView: View {
     let linkedSegment: LinkedSegment
     let isLast: Bool
     @ObservedObject var project: ProjectViewModel
+    @EnvironmentObject var projectManager: ProjectManager
+    var onUnlink: (() -> Void)?
 
     // Check if this is a VFX shot
     private var isVFXShot: Bool {
@@ -136,6 +138,35 @@ struct TreeLinkedSegmentRowView: View {
             }
 
             Spacer()
+
+            // Show unlink button for manual links
+            // Check both the link method AND if there's a manual override in the project
+            if linkedSegment.linkMethod == "manual" ||
+               project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) != nil {
+                Button(action: {
+                    project.removeManualLinkOverride(segmentFileName: linkedSegment.segment.fileName)
+                    projectManager.saveProject(project)
+                    NSLog("🔓 Removed manual link for: \(linkedSegment.segment.fileName)")
+                    onUnlink?()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "link.badge.minus")
+                            .font(.system(size: 14))
+                        Text("Unlink")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help("Remove manual link")
+                .onAppear {
+                    NSLog("🔍 DEBUG: Showing unlink button for \(linkedSegment.segment.fileName) - method: \(linkedSegment.linkMethod), override: \(project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) ?? "nil")")
+                }
+            }
         }
         .padding(.leading, 20)
         .opacity(isOffline ? 0.6 : 1.0)

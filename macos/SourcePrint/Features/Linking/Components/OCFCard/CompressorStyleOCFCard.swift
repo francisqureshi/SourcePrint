@@ -253,8 +253,13 @@ struct CompressorStyleOCFCard: View {
                 TreeLinkedSegmentRowView(
                     linkedSegment: linkedSegment,
                     isLast: linkedSegment.segment.fileName == sortedByTimecode(parent.children).last?.segment.fileName,
-                    project: project
+                    project: project,
+                    onUnlink: {
+                        // Trigger re-linking to move segment back to low confidence
+                        project.performLinkingCallback?()
+                    }
                 )
+                .environmentObject(projectManager)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .onTapGesture {
