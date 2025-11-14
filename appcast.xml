@@ -9,6 +9,28 @@
         <!-- Sparkle Public Key (for signing): 7Gzr9LEfP3ZrSaHS6XqWPjU6x/GtNWzwAUTFfEAr5wI= -->
 
         <item>
+            <title>Version 0.2.0</title>
+            <description><![CDATA[
+                <h2>SourcePrint v0.2.0</h2>
+                <ul>
+                    <li>Fixed Watch Folder
+Manual link for 00:00:00:00 TC shots
+User Interface Updates</li>
+                </ul>
+            ]]></description>
+            <pubDate>Fri, 14 Nov 2025 12:58:18 +0000</pubDate>
+            <sparkle:version>249</sparkle:version>
+            <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/francisqureshi/SourcePrint/releases/download/v0.2.0/SourcePrint-0.2.0.zip"
+                sparkle:edSignature="EsnxUH3W7E8T5KfjnixvqplmaK3r/zmzPG9PDLtnPsEf6dHWHqiqJZW/0VW86dr5hyJ2d0HgR9P4ay9CywvmCA=="
+                length="19725807"
+                type="application/octet-stream"
+            />
+        </item>
+
+        <item>
             <title>Version 0.1.8</title>
             <description><![CDATA[
                 <h2>SourcePrint v0.1.8</h2>
