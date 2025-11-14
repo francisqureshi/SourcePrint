@@ -421,7 +421,9 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
             fileNames: fileNames,
             isVFX: isVFX,
             existingSegments: model.segments,
-            linkingResult: model.linkingResult
+            linkingResult: model.linkingResult,
+            offlineMediaFiles: model.offlineMediaFiles,
+            offlineMetadata: model.offlineFileMetadata
         )
 
         applyAutoImportResult(result)
@@ -433,13 +435,9 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
 
     /// Apply AutoImportResult to model
     private func applyAutoImportResult(_ result: AutoImportResult) {
-        // Remove offline status for returning files
-        for fileName in result.offlineFiles {
+        // Handle returning files first (remove from offline)
+        for fileName in result.returningUnchanged {
             model.offlineMediaFiles.remove(fileName)
-        }
-
-        // Remove offline metadata
-        for fileName in result.offlineMetadata.keys {
             model.offlineFileMetadata.removeValue(forKey: fileName)
         }
 
@@ -471,11 +469,21 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
                 let lastPrintDate = update.lastPrintDate ?? Date()
                 let reason: ReprintReason = update.reason == "segmentOffline" ? .segmentOffline : .segmentModified
                 model.printStatus[ocfFileName] = .needsReprint(lastPrintDate: lastPrintDate, reason: reason)
+            } else if update.reason == "segmentReturned" {
+                // Segment returned unchanged - check current status and revert if it was offline
+                if case .needsReprint(let lastPrintDate, let reason) = model.printStatus[ocfFileName] {
+                    if reason == .segmentOffline {
+                        // Revert to printed status since the offline segment is back and unchanged
+                        let outputPath = model.outputDirectory.appendingPathComponent(ocfFileName)
+                        model.printStatus[ocfFileName] = .printed(date: lastPrintDate, outputURL: outputPath)
+                        NSLog("✅ Reverted print status for %@ - segment returned unchanged", ocfFileName)
+                    }
+                }
             }
         }
 
         // Trigger UI update if changes were made
-        if result.modifiedFiles.count > 0 || result.offlineFiles.count > 0 || !result.printStatusUpdates.isEmpty {
+        if result.modifiedFiles.count > 0 || result.offlineFiles.count > 0 || !result.printStatusUpdates.isEmpty || !result.returningUnchanged.isEmpty {
             objectWillChange.send()
         }
     }

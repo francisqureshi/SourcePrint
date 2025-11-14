@@ -21,6 +21,10 @@ public class FileMonitorWatchFolder {
     private var monitorTasks: [Task<Void, Never>] = []
     private var isActive = false
 
+    /// Store watched folder paths for polling
+    private var gradePath: String?
+    private var vfxPath: String?
+
     /// Callback for when video files are detected (URLs, isVFX)
     public var onVideoFilesDetected: (([URL], Bool) -> Void)?
 
@@ -32,8 +36,17 @@ public class FileMonitorWatchFolder {
 
     /// Pending files waiting for copy completion (filePath -> (lastModified, isVFX))
     private var pendingFiles: [String: (Date, Bool)] = [:]
+
+    /// Track imported files to distinguish modifications from new files
+    private var importedFiles: Set<String> = []
+
     private var debounceTimer: Timer?
     private let debounceInterval: TimeInterval = 3.0  // Wait 3 seconds after last change
+
+    /// Polling timer for network volumes (FSEvents doesn't work well on network drives)
+    private var pollingTimer: Timer?
+    private let pollingInterval: TimeInterval = 5.0  // Check every 5 seconds
+    private var lastKnownFileSizes: [String: Int64] = [:]  // Track file sizes to detect changes
 
     /// Video file extensions to monitor
     private let videoExtensions = ["mov", "mp4", "m4v", "mxf", "prores"]
@@ -50,6 +63,10 @@ public class FileMonitorWatchFolder {
         }
 
         isActive = true
+
+        // Store paths for polling
+        self.gradePath = gradePath
+        self.vfxPath = vfxPath
 
         // Start monitoring grade folder
         if let gradePath = gradePath {
@@ -70,6 +87,82 @@ public class FileMonitorWatchFolder {
         if gradePath == nil && vfxPath == nil {
             NSLog("⚠️ No folders specified for monitoring")
             isActive = false
+            return
+        }
+
+        // Start polling timer for network volumes (FSEvents doesn't work reliably on network drives)
+        startPolling()
+    }
+
+    /// Start polling timer to check for file modifications (for network volumes)
+    private func startPolling() {
+        NSLog("🔄 Starting polling timer (every %.1f seconds) for network volume support", pollingInterval)
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: pollingInterval, repeats: true) { [weak self] _ in
+            self?.checkForFileModifications()
+        }
+    }
+
+    /// Check all tracked files for modifications by comparing file sizes
+    private func checkForFileModifications() {
+        let gradePath = self.gradePath
+        let vfxPath = self.vfxPath
+
+        // Check grade folder
+        if let gradePath = gradePath {
+            checkFilesInFolder(path: gradePath, isVFX: false)
+        }
+
+        // Check VFX folder
+        if let vfxPath = vfxPath {
+            checkFilesInFolder(path: vfxPath, isVFX: true)
+        }
+    }
+
+    /// Check all video files in a folder for modifications
+    private func checkFilesInFolder(path: String, isVFX: Bool) {
+        let folderURL = URL(fileURLWithPath: path)
+
+        guard let fileURLs = try? FileManager.default.contentsOfDirectory(
+            at: folderURL,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+
+        for fileURL in fileURLs {
+            let fileName = fileURL.lastPathComponent
+            let filePath = fileURL.path
+            let fileExtension = fileURL.pathExtension.lowercased()
+
+            // Only check video files
+            guard videoExtensions.contains(fileExtension) else { continue }
+
+            // Only check files we're tracking as imported
+            guard importedFiles.contains(filePath) else { continue }
+
+            // Get current file size
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: filePath)
+                guard let currentSize = attributes[.size] as? Int64 else { continue }
+
+                // Check if size changed
+                if let lastSize = lastKnownFileSizes[filePath] {
+                    if currentSize != lastSize {
+                        NSLog("📝 POLLING: File size changed for %@: %lld -> %lld bytes", fileName, lastSize, currentSize)
+                        // Update stored size
+                        lastKnownFileSizes[filePath] = currentSize
+                        // Notify modification
+                        onVideoFilesModified?([fileName], isVFX)
+                    }
+                } else {
+                    // First time seeing this file - just store its size
+                    lastKnownFileSizes[filePath] = currentSize
+                }
+            } catch {
+                // Ignore errors (file might have been deleted)
+                continue
+            }
         }
     }
 
@@ -154,13 +247,17 @@ public class FileMonitorWatchFolder {
             pathString = fileURL.path
             fileName = fileURL.lastPathComponent
 
+            NSLog("🔔 CHANGED EVENT: %@ (path: %@)", fileName, pathString)
+
             // Skip hidden files
             if fileName.hasPrefix(".") {
+                NSLog("   ⏩ Skipping hidden file")
                 return
             }
 
             let fileExtension = fileURL.pathExtension.lowercased()
             guard videoExtensions.contains(fileExtension) else {
+                NSLog("   ⏩ Skipping non-video file (extension: %@)", fileExtension)
                 return
             }
 
@@ -180,8 +277,12 @@ public class FileMonitorWatchFolder {
                 do {
                     let attributes = try FileManager.default.attributesOfItem(atPath: pathString)
                     if let fileSize = attributes[.size] as? Int64, fileSize > 0 {
-                        // Check if this is a new file (move-in) vs an actual modification
-                        if pendingFiles[pathString] == nil {
+                        // Check if this file has been imported before
+                        if importedFiles.contains(pathString) {
+                            // File was previously imported - this is a modification
+                            NSLog("📝 %@ FILE MODIFIED: %@ (path: %@, tracked: %d files)", isVFX ? "VFX" : "GRADE", fileName, pathString, importedFiles.count)
+                            onVideoFilesModified?([fileName], isVFX)
+                        } else if pendingFiles[pathString] == nil {
                             // New file moved in - treat as creation
                             NSLog("🎬 %@ FILE MOVED IN: %@", isVFX ? "VFX" : "GRADE", fileName)
 
@@ -200,9 +301,17 @@ public class FileMonitorWatchFolder {
                                 "⏳ Moved-in file added to pending queue. Will process in %.1f seconds if no more changes...",
                                 debounceInterval)
                         } else {
-                            // Existing file modified
-                            NSLog("📝 %@ FILE MODIFIED: %@", isVFX ? "VFX" : "GRADE", fileName)
-                            onVideoFilesModified?([fileName], isVFX)
+                            // File is in pending queue and was updated again - update timestamp
+                            pendingFiles[pathString] = (Date(), isVFX)
+                            NSLog("⏳ Pending file updated: %@ - resetting timer", fileName)
+
+                            // Reset debounce timer
+                            debounceTimer?.invalidate()
+                            debounceTimer = Timer.scheduledTimer(
+                                withTimeInterval: debounceInterval, repeats: false
+                            ) { [weak self] _ in
+                                self?.processCompletedFiles()
+                            }
                         }
                     }
                 } catch {
@@ -230,8 +339,9 @@ public class FileMonitorWatchFolder {
             NSLog("🗑️ %@ FILE DELETED: %@", isVFX ? "VFX" : "GRADE", fileName)
             onVideoFilesDeleted?([fileName], isVFX)
 
-            // Remove from pending if it was there
+            // Remove from pending and imported tracking
             pendingFiles.removeValue(forKey: pathString)
+            importedFiles.remove(pathString)
         }
     }
 
@@ -256,10 +366,20 @@ public class FileMonitorWatchFolder {
         gradeMonitor = nil
         vfxMonitor = nil
 
+        // Clear stored paths
+        gradePath = nil
+        vfxPath = nil
+
         // Clean up debounce timer and pending files
         debounceTimer?.invalidate()
         debounceTimer = nil
         pendingFiles.removeAll()
+        importedFiles.removeAll()
+
+        // Clean up polling timer
+        pollingTimer?.invalidate()
+        pollingTimer = nil
+        lastKnownFileSizes.removeAll()
 
         isActive = false
         NSLog("✅ WatchFolder: Stopped")
@@ -290,6 +410,16 @@ public class FileMonitorWatchFolder {
                             "📄 Found existing %@ file: %@", isVFX ? "VFX" : "grade",
                             fileURL.lastPathComponent)
                         existingVideoFiles.append(fileURL)
+
+                        // Track existing files as imported
+                        let filePath = fileURL.path
+                        importedFiles.insert(filePath)
+
+                        // Store initial file size for polling
+                        if let attributes = try? FileManager.default.attributesOfItem(atPath: filePath),
+                           let fileSize = attributes[.size] as? Int64 {
+                            lastKnownFileSizes[filePath] = fileSize
+                        }
                     }
                 }
             }
@@ -339,6 +469,10 @@ public class FileMonitorWatchFolder {
                             } else {
                                 gradeFiles.append(fileURL)
                             }
+
+                            // Track this file as imported
+                            importedFiles.insert(filePath)
+
                             filesToRemove.append(filePath)
                         } else {
                             NSLog(

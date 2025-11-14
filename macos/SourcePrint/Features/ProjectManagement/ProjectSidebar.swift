@@ -19,8 +19,8 @@ struct ProjectSidebar: View {
     @ViewBuilder
     private var sidebarList: some View {
         let list = List(selection: $selection) {
-            Section("Projects") {
-                ForEach(projectManager.projects, id: \.id) { project in
+            Section("Recent Projects") {
+                ForEach(projectManager.recentProjects, id: \.id) { project in
                     ProjectRowView(project: project)
                         .tag(project.id)
                 }
@@ -31,7 +31,7 @@ struct ProjectSidebar: View {
             .listStyle(SidebarListStyle())
             .scrollContentBackground(.hidden)
             .background(AppTheme.backgroundSecondary)
-            .navigationTitle("Projects")
+            .navigationTitle("Recent Projects")
             .onChange(of: selection, handleSelectionChange)
             .onAppear(perform: handleAppear)
             .onChange(of: projectManager.currentProject?.id, handleProjectChange)
@@ -39,9 +39,9 @@ struct ProjectSidebar: View {
 
     private func handleSelectionChange(oldValue: UUID?, newValue: UUID?) {
         if let selectedId = newValue,
-           let selectedProject = projectManager.projects.first(where: { $0.id == selectedId }) {
+           let selectedProject = projectManager.recentProjects.first(where: { $0.id == selectedId }) {
             print("🎯 Sidebar project selected: \(selectedProject.model.name)")
-            projectManager.openProject(selectedProject)
+            projectManager.openRecentProject(selectedProject)
         }
     }
 

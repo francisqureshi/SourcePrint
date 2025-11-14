@@ -77,7 +77,7 @@ struct TreeLinkedSegmentRowView: View {
                             .cornerRadius(3)
                     }
 
-                    // Online/Offline/Updated status badge
+                    // Offline status badge
                     if isOffline {
                         HStack(spacing: 2) {
                             Image(systemName: "circle.fill")
@@ -91,20 +91,6 @@ struct TreeLinkedSegmentRowView: View {
                         .padding(.vertical, 1)
                         .background(Color.appBackgroundBadge)
                         .foregroundColor(Color.appError)
-                        .cornerRadius(3)
-                    } else if let modDate = modificationDate {
-                        HStack(spacing: 2) {
-                            Image(systemName: "circle.fill")
-                                .font(.system(size: 6))
-                                .foregroundColor(.yellow)
-                            Text("UPDATED")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.appBackgroundBadge)
-                        .foregroundColor(Color.appWarning)
                         .cornerRadius(3)
                     }
                 }

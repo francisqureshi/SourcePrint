@@ -414,14 +414,9 @@ struct MediaFileColumnRowView: View {
                 Image(systemName: "circle.fill")
                     .font(.system(size: 8))
                     .foregroundColor(.yellow)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Updated")
-                        .font(.system(size: 11))
-                        .foregroundColor(.yellow)
-                    Text(formatDate(modDate))
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
+                Text(formatDate(modDate))
+                    .font(.system(size: 11))
+                    .foregroundColor(.yellow)
             } else {
                 Image(systemName: "circle.fill")
                     .font(.system(size: 8))

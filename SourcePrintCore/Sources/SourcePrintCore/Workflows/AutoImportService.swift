@@ -214,7 +214,7 @@ public class AutoImportService {
         if markedCount > 0 {
             NSLog("✅ Marked %d deleted %@ files as offline", markedCount, isVFX ? "VFX" : "grade")
 
-            // Mark affected OCFs for re-print
+            // Mark affected OCFs as unprintable due to offline segments
             if let linkingResult = linkingResult {
                 for fileName in fileNames where offlineFiles.contains(fileName) {
                     for ocfParent in linkingResult.ocfParents {
@@ -222,7 +222,7 @@ public class AutoImportService {
                             if child.segment.fileName == fileName {
                                 ocfsNeedingReprint.insert(ocfParent.ocf.fileName)
                                 printStatusUpdates[ocfParent.ocf.fileName] = (true, "segmentOffline", Date())
-                                NSLog("⚠️ OCF %@ needs reprint due to offline segment", ocfParent.ocf.fileName)
+                                NSLog("⚠️ OCF %@ incomplete - segment %@ is offline", ocfParent.ocf.fileName, fileName)
                             }
                         }
                     }
@@ -252,7 +252,9 @@ public class AutoImportService {
         fileNames: [String],
         isVFX: Bool,
         existingSegments: [MediaFileInfo],
-        linkingResult: LinkingResult?
+        linkingResult: LinkingResult?,
+        offlineMediaFiles: Set<String> = [],
+        offlineMetadata: [String: OfflineFileMetadata] = [:]
     ) -> AutoImportResult {
         NSLog("📝 Handling %d modified %@ files...", fileNames.count, isVFX ? "VFX" : "grade")
 
@@ -261,11 +263,39 @@ public class AutoImportService {
         var updatedFileSizes: [String: Int64] = [:]
         var ocfsNeedingReprint = Set<String>()
         var printStatusUpdates: [String: (Bool, String?, Date?)] = [:]
+        var returningFiles = Set<String>()
 
         for fileName in fileNames {
+            // Check if this file was offline and is now returning
+            let wasOffline = offlineMediaFiles.contains(fileName)
+
             // Find segment by filename
             if let segment = existingSegments.first(where: { $0.fileName == fileName }) {
-                NSLog("📝 Found modified segment: %@", fileName)
+                // Check if file content actually changed by comparing with offline metadata
+                var fileActuallyChanged = true
+
+                if wasOffline, let metadata = offlineMetadata[fileName] {
+                    // Compare file size first (fast check)
+                    if case .success(let currentSize) = FileSystemOperations.getFileSize(for: segment.url) {
+                        if currentSize == metadata.fileSize {
+                            // Size matches - this is likely the same file
+                            // Optionally compute hash for verification (disabled for now as size match is typically sufficient)
+                            fileActuallyChanged = false
+                            NSLog("🔄 File returned unchanged (size match): %@ (%lld bytes)", fileName, currentSize)
+                        } else {
+                            NSLog("🔄 File returned but size changed: %@ (was: %lld, now: %lld bytes)", fileName, metadata.fileSize, currentSize)
+                        }
+                    }
+                }
+
+                if wasOffline {
+                    returningFiles.insert(fileName)
+                    if fileActuallyChanged {
+                        NSLog("📝 File returning from offline with changes: %@", fileName)
+                    }
+                } else {
+                    NSLog("📝 Found modified segment: %@", fileName)
+                }
 
                 // Update the segment's modification date to mark it as changed
                 modifiedFiles.insert(fileName)
@@ -282,12 +312,24 @@ public class AutoImportService {
                     for ocfParent in linkingResult.ocfParents {
                         for child in ocfParent.children {
                             if child.segment.fileName == fileName {
-                                ocfsNeedingReprint.insert(ocfParent.ocf.fileName)
-                                printStatusUpdates[ocfParent.ocf.fileName] = (true, "segmentModified", Date())
-                                NSLog("📝 Segment %@ affects OCF: %@", fileName, ocfParent.ocf.fileName)
+                                if fileActuallyChanged {
+                                    // File changed - mark for reprint
+                                    ocfsNeedingReprint.insert(ocfParent.ocf.fileName)
+                                    printStatusUpdates[ocfParent.ocf.fileName] = (true, "segmentModified", Date())
+                                    NSLog("📝 Segment %@ affects OCF: %@", fileName, ocfParent.ocf.fileName)
+                                } else {
+                                    // File unchanged - clear offline reprint status for this OCF
+                                    // Note: We set needsReprint to false, which will be handled in applyAutoImportResult
+                                    printStatusUpdates[ocfParent.ocf.fileName] = (false, "segmentReturned", nil)
+                                    NSLog("✅ OCF %@ no longer needs reprint - segment %@ returned unchanged", ocfParent.ocf.fileName, fileName)
+                                }
                             }
                         }
                     }
+                }
+
+                if !fileActuallyChanged {
+                    NSLog("✅ File %@ unchanged - no reprint needed", fileName)
                 }
             }
         }
@@ -298,12 +340,17 @@ public class AutoImportService {
                 ocfsNeedingReprint.count, fileNames.count, isVFX ? "VFX" : "grade")
         }
 
+        if !returningFiles.isEmpty {
+            NSLog("🔄 %d file(s) returned from offline and will be brought back online", returningFiles.count)
+        }
+
         return AutoImportResult(
             modifiedFiles: modifiedFiles,
             modificationDates: modificationDates,
             updatedFileSizes: updatedFileSizes,
             ocfsNeedingReprint: ocfsNeedingReprint,
-            printStatusUpdates: printStatusUpdates
+            printStatusUpdates: printStatusUpdates,
+            returningUnchanged: returningFiles
         )
     }
 

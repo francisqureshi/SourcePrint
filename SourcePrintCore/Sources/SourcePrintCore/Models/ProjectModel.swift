@@ -268,7 +268,12 @@ public enum PrintStatus: Codable {
             formatter.timeStyle = .none
             return "Printed \(formatter.string(from: date))"
         case .needsReprint(_, let reason):
-            return "Needs Re-print (\(reason.displayName))"
+            // For offline segments, show "Incomplete" instead of "Needs Re-print"
+            if reason == .segmentOffline {
+                return "Incomplete (\(reason.displayName))"
+            } else {
+                return "Needs Re-print (\(reason.displayName))"
+            }
         }
     }
 
@@ -309,7 +314,7 @@ public enum ReprintReason: String, Codable {
     public var displayName: String {
         switch self {
         case .segmentModified: return "Segment Modified"
-        case .segmentOffline: return "Segment Offline"
+        case .segmentOffline: return "Missing Segment"
         case .manualRequest: return "Manual Request"
         case .previousFailed: return "Previous Failed"
         }

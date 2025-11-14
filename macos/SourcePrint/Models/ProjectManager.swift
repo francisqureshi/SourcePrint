@@ -32,57 +32,71 @@ class ProjectManager: ObservableObject {
         // Set up project storage directory
         documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         projectsDirectory = documentsDirectory.appendingPathComponent("ProResWriter Projects")
-        
+
         print("📁 Projects directory: \(projectsDirectory.path)")
-        
+
         // Ensure projects directory exists
         try? FileManager.default.createDirectory(at: projectsDirectory, withIntermediateDirectories: true)
-        
-        // Load existing projects
-        loadProjects()
-        print("📊 Loaded \(projects.count) projects, \(recentProjects.count) recent")
+
+        // Load recent projects from UserDefaults
+        loadRecentProjects()
+        print("📊 Loaded \(recentProjects.count) recent projects")
     }
     
     // MARK: - Project Creation
-    func createNewProject(name: String, outputDirectory: URL, blankRushDirectory: URL) -> ProjectViewModel {
+    func createNewProject(name: String, outputDirectory: URL, blankRushDirectory: URL, saveLocation: URL) -> ProjectViewModel {
         let viewModel = ProjectViewModel(
             name: name,
             outputDirectory: outputDirectory,
             blankRushDirectory: blankRushDirectory
         )
 
+        // Set the file URL to the user-chosen location
+        viewModel.model.fileURL = saveLocation
+
         projects.append(viewModel)
         currentProject = viewModel
         updateRecentProjects(viewModel)
 
-        // Auto-save new project
+        // Auto-save new project to the specified location
         saveProject(viewModel)
 
         return viewModel
     }
     
     // MARK: - Project Loading/Saving
-    private func loadProjects() {
-        guard let urls = try? FileManager.default.contentsOfDirectory(
-            at: projectsDirectory,
-            includingPropertiesForKeys: nil
-        ).filter({ $0.pathExtension == "w2" }) else {
+    private func loadRecentProjects() {
+        // Load recent project URLs from UserDefaults
+        guard let urlStrings = UserDefaults.standard.array(forKey: "recentProjectURLs") as? [String] else {
+            NSLog("📋 No recent projects found in UserDefaults")
             return
         }
-        
-        for url in urls {
+
+        NSLog("📋 Loading \(urlStrings.count) recent projects from UserDefaults")
+
+        for urlString in urlStrings {
+            let url = URL(fileURLWithPath: urlString)
+
+            // Check if file still exists
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                NSLog("⚠️ Recent project file no longer exists: \(url.path)")
+                continue
+            }
+
             if let project = loadProject(from: url) {
-                projects.append(project)
-                
-                // Add to recent projects (sorted by lastModified)
-                if recentProjects.count < 10 {
-                    recentProjects.append(project)
-                }
+                recentProjects.append(project)
+                NSLog("✅ Loaded recent project: \(project.model.name)")
             }
         }
-        
-        // Sort recent projects by last modified date
-        recentProjects.sort { $0.model.lastModified > $1.model.lastModified }
+
+        NSLog("📊 Loaded \(recentProjects.count) recent projects")
+    }
+
+    private func saveRecentProjectURLs() {
+        // Save just the file URLs to UserDefaults
+        let urlStrings = recentProjects.compactMap { $0.model.fileURL?.path }
+        UserDefaults.standard.set(urlStrings, forKey: "recentProjectURLs")
+        NSLog("💾 Saved \(urlStrings.count) recent project URLs to UserDefaults")
     }
     
     private func loadProject(from url: URL) -> ProjectViewModel? {
@@ -435,10 +449,12 @@ class ProjectManager: ObservableObject {
 
     private func removeFromRecentProjects(_ viewModel: ProjectViewModel) {
         recentProjects.removeAll { $0.model.name == viewModel.model.name }
+        saveRecentProjectURLs()
     }
-    
+
     func clearRecentProjects() {
         recentProjects.removeAll()
+        saveRecentProjectURLs()
         NSLog("🗑️ Cleared recent projects menu")
     }
     
@@ -453,6 +469,9 @@ class ProjectManager: ObservableObject {
         if recentProjects.count > 10 {
             recentProjects.removeLast()
         }
+
+        // Persist to UserDefaults
+        saveRecentProjectURLs()
     }
     
     // MARK: - Import Integration
