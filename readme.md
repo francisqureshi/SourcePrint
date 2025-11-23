@@ -60,3 +60,5 @@ Legend:
 - **SwiftFFmpeg** - Video processing with static FFmpeg 7.1.2
 - **TimecodeKit** - SMPTE timecode calculations
 - **VideoToolbox** - Hardware-accelerated ProRes encoding
+
+* Note: The swift code in this project is 95% vibe coded - this project is my attempt at learning how video processing / ffmpeg / swift / macos apps work, with a focus of hand re-writing the backend in Zig and possibly removing or at least reducing the ffmpeg dependancy in favour of learning how remuxing and encoding works... and hand rolling my own attempt! :)
