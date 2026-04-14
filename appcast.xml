@@ -9,6 +9,29 @@
         <!-- Sparkle Public Key (for signing): 7Gzr9LEfP3ZrSaHS6XqWPjU6x/GtNWzwAUTFfEAr5wI= -->
 
         <item>
+            <title>Version 0.3.0</title>
+            <description><![CDATA[
+                <h2>SourcePrint v0.3.0</h2>
+                <ul>
+                    <li>- Fixed "Link Files" button not triggering the linking process when pressed from the Media Import tab for the first time 
+- Removed unreliable automatic linking that fired after every file import 
+- Removed the Project Validation Warnings popup window that appeared on project load 
+- Validation issues are still logged to console for debugging</li>
+                </ul>
+            ]]></description>
+            <pubDate>Tue, 14 Apr 2026 16:27:55 +0000</pubDate>
+            <sparkle:version>252</sparkle:version>
+            <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/francisqureshi/SourcePrint/releases/download/v0.3.0/SourcePrint-0.3.0.zip"
+                sparkle:edSignature="EKEkiVCVstXj3dXYwc/QeFwQUUI87nFiXmHyx16owyTY8ybfNELuT7G3MiDYEms8bqNk4Wo86qI+HZswZD3eDQ=="
+                length="19702501"
+                type="application/octet-stream"
+            />
+        </item>
+
+        <item>
             <title>Version 0.2.0</title>
             <description><![CDATA[
                 <h2>SourcePrint v0.2.0</h2>
