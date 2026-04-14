@@ -124,7 +124,6 @@ class ProjectManager: ObservableObject {
 
                 // Validate project integrity
                 let validationResult = ProjectValidator.validate(viewModel.model)
-                viewModel.validationResult = validationResult
 
                 // Clear stale linking result if needed
                 if validationResult.shouldClearLinkingResult {
@@ -138,11 +137,6 @@ class ProjectManager: ObservableObject {
                     NSLog("⚠️ Project validation found \(validationResult.issues.count) issue(s):")
                     for issue in validationResult.issues {
                         NSLog("  [\(issue.severity == .error ? "ERROR" : "WARNING")] \(issue.message)")
-                    }
-
-                    // Show validation alert to user on main thread
-                    DispatchQueue.main.async {
-                        ProjectAlertHelper.showValidationAlert(for: validationResult, projectName: viewModel.model.name)
                     }
                 }
 

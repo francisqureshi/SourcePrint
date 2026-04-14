@@ -45,9 +45,6 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
         }
     }
 
-    /// Project validation result (UI-only, not persisted)
-    @Published var validationResult: ProjectValidationResult?
-
     /// Set to true by the Link Files button to trigger linking once LinkingTab appears
     var pendingLinkRequest: Bool = false
 
