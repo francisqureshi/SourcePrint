@@ -116,11 +116,7 @@ struct MediaImportTab: View {
 
             // Wire up link button callback
             statusBarVM.onLinkFiles = {
-                // Call performLinking directly for immediate execution
-                // (autoLinkingCallback uses debouncing for automatic triggers)
-                project.performLinkingCallback?()
-
-                // Switch to linking tab
+                project.pendingLinkRequest = true
                 selectedTab = .linking
             }
 
@@ -230,9 +226,6 @@ struct MediaImportTab: View {
                 statusBarVM.completeOperation(summary: "Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") file\(mediaFiles.count == 1 ? "" : "s")")
 
                 NSLog("✅ Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") files")
-
-                // Trigger automatic linking after manual import
-                project.autoLinkingCallback?()
             }
         }
     }

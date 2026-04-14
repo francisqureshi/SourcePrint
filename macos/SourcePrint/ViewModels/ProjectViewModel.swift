@@ -48,10 +48,10 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     /// Project validation result (UI-only, not persisted)
     @Published var validationResult: ProjectValidationResult?
 
-    /// Callback for automatic linking with debouncing (set by LinkingTab)
-    var autoLinkingCallback: (() -> Void)?
+    /// Set to true by the Link Files button to trigger linking once LinkingTab appears
+    var pendingLinkRequest: Bool = false
 
-    /// Callback for manual linking without debouncing (set by LinkingTab)
+    /// Callback for manual linking (set by LinkingTab)
     var performLinkingCallback: (() -> Void)?
 
     /// Watch folder service instance
@@ -396,9 +396,6 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
                 await MainActor.run {
                     addSegments(mediaFiles)
                     NSLog("✅ Auto-imported %d new %@ files from watch folder", mediaFiles.count, isVFX ? "VFX" : "grade")
-
-                    // Trigger automatic linking after import
-                    autoLinkingCallback?()
                 }
             }
         }
