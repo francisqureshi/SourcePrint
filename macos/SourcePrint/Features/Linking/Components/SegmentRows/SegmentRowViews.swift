@@ -13,6 +13,7 @@ import SwiftUI
 struct TreeLinkedSegmentRowView: View {
     let linkedSegment: LinkedSegment
     let isLast: Bool
+    let ocfFileName: String
     @ObservedObject var project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
     var onUnlink: (() -> Void)?
@@ -27,9 +28,31 @@ struct TreeLinkedSegmentRowView: View {
         project.model.offlineMediaFiles.contains(linkedSegment.segment.fileName)
     }
 
-    private var modificationDate: Date? {
-        project.model.segmentModificationDates[linkedSegment.segment.fileName]
+    // Returns the file modification date if this segment was modified after last print, nil otherwise
+    private var modifiedFileDate: Date? {
+        let lastPrintDate: Date?
+        switch project.model.printStatus[ocfFileName] {
+        case .printed(let date, _):
+            lastPrintDate = date
+        case .needsReprint(let date, _):
+            lastPrintDate = date
+        case .notPrinted, nil:
+            return nil
+        }
+        guard let printDate = lastPrintDate else { return nil }
+        let attrs = try? FileManager.default.attributesOfItem(
+            atPath: linkedSegment.segment.url.path)
+        if let fileModDate = attrs?[.modificationDate] as? Date, fileModDate > printDate {
+            return fileModDate
+        }
+        return nil
     }
+
+    private static let modifiedDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "dd/MM/yy @ HH:mm:ss"
+        return f
+    }()
 
     var confidenceColor: Color {
         switch linkedSegment.linkConfidence {
@@ -64,6 +87,13 @@ struct TreeLinkedSegmentRowView: View {
                     Text(linkedSegment.segment.fileName)
                         .font(.body)
                         .foregroundColor(isOffline ? .red : .primary)
+                        .contextMenu {
+                            Button("Copy Filename") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(
+                                    linkedSegment.segment.fileName, forType: .string)
+                            }
+                        }
 
                     // VFX badge
                     if isVFXShot {
@@ -74,6 +104,18 @@ struct TreeLinkedSegmentRowView: View {
                             .padding(.vertical, 1)
                             .background(Color.appBackgroundBadge)
                             .foregroundColor(Color.appVfxShot)
+                            .cornerRadius(3)
+                    }
+
+                    // Modified badge with date
+                    if let modDate = modifiedFileDate {
+                        Text("MODIFIED • \(Self.modifiedDateFormatter.string(from: modDate))")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundColor(.orange)
                             .cornerRadius(3)
                     }
 
@@ -97,7 +139,8 @@ struct TreeLinkedSegmentRowView: View {
 
                 HStack {
                     HStack(spacing: 4) {
-                        ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) { badge in
+                        ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) {
+                            badge in
                             Text(badge)
                                 .font(.caption2)
                                 .padding(.horizontal, 4)
@@ -107,15 +150,10 @@ struct TreeLinkedSegmentRowView: View {
                         }
                     }
                     if let startTC = linkedSegment.segment.sourceTimecode,
-                       let endTC = linkedSegment.segment.endTimecode {
+                        let endTC = linkedSegment.segment.endTimecode
+                    {
                         Text("•")
                         Text("\(startTC) - \(endTC)")
-                            .monospacedDigit()
-                    }
-                    // Show modification date for updated files
-                    if let modDate = modificationDate {
-                        Text("•")
-                        Text("Updated: \(formatDate(modDate))")
                             .monospacedDigit()
                     }
                 }
@@ -125,12 +163,28 @@ struct TreeLinkedSegmentRowView: View {
 
             Spacer()
 
+            // Reveal in Finder button
+            Button(action: {
+                NSWorkspace.shared.selectFile(
+                    linkedSegment.segment.url.path,
+                    inFileViewerRootedAtPath: ""
+                )
+            }) {
+                Image(systemName: "folder")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Reveal in Finder")
+
             // Show unlink button for manual links
             // Check both the link method AND if there's a manual override in the project
-            if linkedSegment.linkMethod == "manual" ||
-               project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) != nil {
+            if linkedSegment.linkMethod == "manual"
+                || project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName)
+                    != nil
+            {
                 Button(action: {
-                    project.removeManualLinkOverride(segmentFileName: linkedSegment.segment.fileName)
+                    project.removeManualLinkOverride(
+                        segmentFileName: linkedSegment.segment.fileName)
                     projectManager.saveProject(project)
                     NSLog("🔓 Removed manual link for: \(linkedSegment.segment.fileName)")
                     onUnlink?()
@@ -150,7 +204,9 @@ struct TreeLinkedSegmentRowView: View {
                 .buttonStyle(.plain)
                 .help("Remove manual link")
                 .onAppear {
-                    NSLog("🔍 DEBUG: Showing unlink button for \(linkedSegment.segment.fileName) - method: \(linkedSegment.linkMethod), override: \(project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) ?? "nil")")
+                    NSLog(
+                        "🔍 DEBUG: Showing unlink button for \(linkedSegment.segment.fileName) - method: \(linkedSegment.linkMethod), override: \(project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) ?? "nil")"
+                    )
                 }
             }
         }
@@ -158,12 +214,6 @@ struct TreeLinkedSegmentRowView: View {
         .opacity(isOffline ? 0.6 : 1.0)
     }
 
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
 }
 
 // MARK: - Low Confidence Segment Row
@@ -221,7 +271,8 @@ struct LowConfidenceSegmentRowView: View {
 
                     HStack {
                         HStack(spacing: 4) {
-                            ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) { badge in
+                            ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) {
+                                badge in
                                 Text(badge)
                                     .font(.caption2)
                                     .padding(.horizontal, 4)
@@ -231,7 +282,8 @@ struct LowConfidenceSegmentRowView: View {
                             }
                         }
                         if let startTC = linkedSegment.segment.sourceTimecode,
-                           let endTC = linkedSegment.segment.endTimecode {
+                            let endTC = linkedSegment.segment.endTimecode
+                        {
                             Text("•")
                             Text("\(startTC) - \(endTC)")
                                 .monospacedDigit()
@@ -290,7 +342,8 @@ struct LowConfidenceSegmentRowView: View {
                                 )
                                 projectManager.saveProject(project)
                                 isLinked = true
-                                NSLog("📌 Manual link: \(linkedSegment.segment.fileName) → \(ocfName)")
+                                NSLog(
+                                    "📌 Manual link: \(linkedSegment.segment.fileName) → \(ocfName)")
 
                                 // Trigger re-linking to move segment to linked OCF
                                 onLinkConfirmed?()
@@ -309,7 +362,9 @@ struct LowConfidenceSegmentRowView: View {
         }
         .onAppear {
             // Check if there's already a manual override
-            if let existingOverride = project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) {
+            if let existingOverride = project.getManualLinkOverride(
+                segmentFileName: linkedSegment.segment.fileName)
+            {
                 selectedOCFName = existingOverride
                 isLinked = true
             } else {
@@ -322,7 +377,8 @@ struct LowConfidenceSegmentRowView: View {
     private func suggestBestMatch() -> String? {
         // Find OCF with matching resolution, frame rate, and filename similarity
         guard let segmentRes = linkedSegment.segment.effectiveDisplayResolution,
-              let segmentFR = linkedSegment.segment.frameRate else {
+            let segmentFR = linkedSegment.segment.frameRate
+        else {
             return availableOCFs.first?.fileName
         }
 
@@ -331,7 +387,8 @@ struct LowConfidenceSegmentRowView: View {
         // First try: Look for filename match + tech specs match
         let filenameMatch = availableOCFs.first { ocf in
             guard let ocfRes = ocf.effectiveDisplayResolution,
-                  let ocfFR = ocf.frameRate else {
+                let ocfFR = ocf.frameRate
+            else {
                 return false
             }
 
@@ -339,10 +396,9 @@ struct LowConfidenceSegmentRowView: View {
             let ocfBaseNameLower = ocfBaseName.lowercased()
             let hasFilenameMatch = segmentNameLower.contains(ocfBaseNameLower)
 
-            return hasFilenameMatch &&
-                   segmentRes.width == ocfRes.width &&
-                   segmentRes.height == ocfRes.height &&
-                   FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
+            return hasFilenameMatch && segmentRes.width == ocfRes.width
+                && segmentRes.height == ocfRes.height
+                && FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
         }
 
         if let match = filenameMatch {
@@ -352,13 +408,13 @@ struct LowConfidenceSegmentRowView: View {
         // Second try: Just tech specs match (no filename requirement)
         let techMatch = availableOCFs.first { ocf in
             guard let ocfRes = ocf.effectiveDisplayResolution,
-                  let ocfFR = ocf.frameRate else {
+                let ocfFR = ocf.frameRate
+            else {
                 return false
             }
 
-            return segmentRes.width == ocfRes.width &&
-                   segmentRes.height == ocfRes.height &&
-                   FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
+            return segmentRes.width == ocfRes.width && segmentRes.height == ocfRes.height
+                && FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
         }
 
         return techMatch?.fileName ?? availableOCFs.first?.fileName
@@ -430,7 +486,8 @@ struct LinkedSegmentRowView: View {
 
                 HStack {
                     HStack(spacing: 4) {
-                        ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) { badge in
+                        ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) {
+                            badge in
                             Text(badge)
                                 .font(.caption2)
                                 .padding(.horizontal, 4)
@@ -440,7 +497,8 @@ struct LinkedSegmentRowView: View {
                         }
                     }
                     if let startTC = linkedSegment.segment.sourceTimecode,
-                       let endTC = linkedSegment.segment.endTimecode {
+                        let endTC = linkedSegment.segment.endTimecode
+                    {
                         Text("•")
                         Text("\(startTC) - \(endTC)")
                             .monospacedDigit()
@@ -505,7 +563,8 @@ struct OCFParentRowView: View {
 
             // Children Segments (when expanded)
             if isExpanded && parent.hasChildren {
-                ForEach(sortedByTimecode(parent.children), id: \.segment.fileName) { linkedSegment in
+                ForEach(sortedByTimecode(parent.children), id: \.segment.fileName) {
+                    linkedSegment in
                     LinkedSegmentRowView(linkedSegment: linkedSegment)
                         .padding(.leading, 20)
                 }

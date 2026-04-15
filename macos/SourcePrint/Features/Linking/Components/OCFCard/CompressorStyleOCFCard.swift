@@ -244,6 +244,7 @@ struct CompressorStyleOCFCard: View {
 
                 // Linked segments
                 segmentsListView
+                    .padding(.horizontal, 12)
             }
             .padding(8)
             .background(Color.appBackgroundTertiary.opacity(0.8))
@@ -260,31 +261,36 @@ struct CompressorStyleOCFCard: View {
     }
 
     private var segmentsListView: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(sortedByTimecode(parent.children).enumerated()), id: \.element.segment.fileName) { index, linkedSegment in
-                TreeLinkedSegmentRowView(
-                    linkedSegment: linkedSegment,
-                    isLast: linkedSegment.segment.fileName == sortedByTimecode(parent.children).last?.segment.fileName,
-                    project: project,
-                    onUnlink: {
-                        // Trigger re-linking to move segment back to low confidence
-                        project.performLinkingCallback?()
+        GroupBox {
+            VStack(spacing: 0) {
+                ForEach(Array(sortedByTimecode(parent.children).enumerated()), id: \.element.segment.fileName) { index, linkedSegment in
+                    TreeLinkedSegmentRowView(
+                        linkedSegment: linkedSegment,
+                        isLast: linkedSegment.segment.fileName == sortedByTimecode(parent.children).last?.segment.fileName,
+                        ocfFileName: parent.ocf.fileName,
+                        project: project,
+                        onUnlink: {
+                            project.performLinkingCallback?()
+                        }
+                    )
+                    .environmentObject(projectManager)
+                    .padding(.vertical, 2)
+                    .onTapGesture {
+                        focusedOCFIndex = ocfIndex
+                        navigationContext = .segmentList
+                        selectedLinkedFiles = [linkedSegment.segment.fileName]
+                        selectedOCFParents = [parent.ocf.fileName]
                     }
-                )
-                .environmentObject(projectManager)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .onTapGesture {
-                    focusedOCFIndex = ocfIndex
-                    navigationContext = .segmentList
-                    selectedLinkedFiles = [linkedSegment.segment.fileName]
-                    selectedOCFParents = [parent.ocf.fileName]
+                    .background(
+                        selectedLinkedFiles.contains(linkedSegment.segment.fileName)
+                        ? Color.accentColor.opacity(0.2)
+                        : Color.clear
+                    )
+
+                    if index < parent.children.count - 1 {
+                        Divider()
+                    }
                 }
-                .background(
-                    selectedLinkedFiles.contains(linkedSegment.segment.fileName)
-                    ? Color.accentColor.opacity(0.2)
-                    : Color.clear
-                )
             }
         }
     }
