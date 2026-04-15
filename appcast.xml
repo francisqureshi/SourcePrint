@@ -9,6 +9,27 @@
         <!-- Sparkle Public Key (for signing): 7Gzr9LEfP3ZrSaHS6XqWPjU6x/GtNWzwAUTFfEAr5wI= -->
 
         <item>
+            <title>Version 0.3.4</title>
+            <description><![CDATA[
+                <h2>SourcePrint v0.3.4</h2>
+                <ul>
+                    <li>Segment and Print Status improvements
+Ability to right click clip name and copy name</li>
+                </ul>
+            ]]></description>
+            <pubDate>Wed, 15 Apr 2026 17:15:10 +0000</pubDate>
+            <sparkle:version>280</sparkle:version>
+            <sparkle:shortVersionString>0.3.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/francisqureshi/SourcePrint/releases/download/v0.3.4/SourcePrint-0.3.4.zip"
+                sparkle:edSignature="0bZGhalJbBQlIkLPRw2szXbUr60+Kfp5M4vKRmrUBnzIJtX73q6so5NMEn1lh1T0CU5SHF9JNEQ2q9JGgbhAAg=="
+                length="19710173"
+                type="application/octet-stream"
+            />
+        </item>
+
+        <item>
             <title>Version 0.3.3</title>
             <description><![CDATA[
                 <h2>SourcePrint v0.3.3</h2>
