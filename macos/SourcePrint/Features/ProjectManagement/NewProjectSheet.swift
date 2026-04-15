@@ -94,6 +94,8 @@ struct NewProjectSheet: View {
             Button("Choose...") {
                 if isFilePicker {
                     pickSaveLocation(binding: url)
+                } else if label == "Output Directory" {
+                    pickOutputDirectory()
                 } else {
                     pickDirectory(binding: url)
                 }
@@ -114,6 +116,9 @@ struct NewProjectSheet: View {
               let saveLocation = projectSaveLocation else { return }
 
         let name = saveLocation.deletingPathExtension().lastPathComponent
+
+        // Create blank rush directory if it doesn't already exist
+        try? FileManager.default.createDirectory(at: blankRushDir, withIntermediateDirectories: true)
 
         _ = projectManager.createNewProject(
             name: name,
@@ -139,6 +144,21 @@ struct NewProjectSheet: View {
                 base = base.deletingPathExtension()
             }
             binding.wrappedValue = base.appendingPathExtension("w2")
+        }
+    }
+
+    private func pickOutputDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            outputDirectory = url
+
+            // Suggest a sibling blank_rush folder — only create it when the project is confirmed
+            blankRushDirectory = url.deletingLastPathComponent().appendingPathComponent("blank_rush")
         }
     }
 
