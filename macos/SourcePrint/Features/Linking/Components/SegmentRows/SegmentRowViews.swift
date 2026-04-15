@@ -73,32 +73,36 @@ struct TreeLinkedSegmentRowView: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: confidenceIcon)
-                .foregroundColor(confidenceColor)
-                .frame(width: 16)
-
-            Image(systemName: "film")
-                .foregroundColor(AppTheme.segmentColor)
-                .frame(width: 16)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(linkedSegment.segment.fileName)
-                        .font(.body)
-                        .foregroundColor(isOffline ? .red : .primary)
-                        .contextMenu {
-                            Button("Copy Filename") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(
-                                    linkedSegment.segment.fileName, forType: .string)
-                            }
+        HStack(alignment: .top, spacing: 12) {
+            // LEFT: confidence + film icons, filename as label text
+            Label {
+                Text(linkedSegment.segment.fileName)
+                    .font(.caption)
+                    .foregroundColor(isOffline ? .red : .primary)
+                    .contextMenu {
+                        Button("Copy Filename") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(
+                                linkedSegment.segment.fileName, forType: .string)
                         }
+                    }
+            } icon: {
+                HStack(spacing: 2) {
+                    Image(systemName: confidenceIcon)
+                        .foregroundColor(confidenceColor)
+                    Image(systemName: "film")
+                        .foregroundColor(AppTheme.segmentColor)
+                }
+                .font(.caption)
+            }
 
-                    // VFX badge
+            Spacer()
+
+            // RIGHT: badges, timecode, and modified status — trailing aligned
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(spacing: 4) {
                     if isVFXShot {
                         Text("VFX")
-                            .font(.caption2)
                             .fontWeight(.medium)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
@@ -106,27 +110,12 @@ struct TreeLinkedSegmentRowView: View {
                             .foregroundColor(Color.appVfxShot)
                             .cornerRadius(3)
                     }
-
-                    // Modified badge with date
-                    if let modDate = modifiedFileDate {
-                        Text("MODIFIED • \(Self.modifiedDateFormatter.string(from: modDate))")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundColor(.orange)
-                            .cornerRadius(3)
-                    }
-
-                    // Offline status badge
                     if isOffline {
                         HStack(spacing: 2) {
                             Image(systemName: "circle.fill")
                                 .font(.system(size: 6))
                                 .foregroundColor(.red)
                             Text("OFFLINE")
-                                .font(.caption2)
                                 .fontWeight(.bold)
                         }
                         .padding(.horizontal, 4)
@@ -135,19 +124,12 @@ struct TreeLinkedSegmentRowView: View {
                         .foregroundColor(Color.appError)
                         .cornerRadius(3)
                     }
-                }
-
-                HStack {
-                    HStack(spacing: 4) {
-                        ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) {
-                            badge in
-                            Text(badge)
-                                .font(.caption2)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(Color.appBackgroundBadge)
-                                .cornerRadius(3)
-                        }
+                    ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) { badge in
+                        Text(badge)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.appBackgroundBadge)
+                            .cornerRadius(3)
                     }
                     if let startTC = linkedSegment.segment.sourceTimecode,
                         let endTC = linkedSegment.segment.endTimecode
@@ -157,13 +139,22 @@ struct TreeLinkedSegmentRowView: View {
                             .monospacedDigit()
                     }
                 }
-                .font(.caption)
+                .font(.caption2)
                 .foregroundColor(.secondary)
+
+                if let modDate = modifiedFileDate {
+                    Text("MODIFIED • \(Self.modifiedDateFormatter.string(from: modDate))")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(AppTheme.warning.opacity(0.15))
+                        .foregroundColor(AppTheme.warning)
+                        .cornerRadius(3)
+                }
             }
 
-            Spacer()
-
-            // Reveal in Finder button
+            // Reveal in Finder
             Button(action: {
                 NSWorkspace.shared.selectFile(
                     linkedSegment.segment.url.path,
@@ -176,8 +167,7 @@ struct TreeLinkedSegmentRowView: View {
             .buttonStyle(.plain)
             .help("Reveal in Finder")
 
-            // Show unlink button for manual links
-            // Check both the link method AND if there's a manual override in the project
+            // Unlink (manual links only)
             if linkedSegment.linkMethod == "manual"
                 || project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName)
                     != nil
@@ -186,7 +176,6 @@ struct TreeLinkedSegmentRowView: View {
                     project.removeManualLinkOverride(
                         segmentFileName: linkedSegment.segment.fileName)
                     projectManager.saveProject(project)
-                    NSLog("🔓 Removed manual link for: \(linkedSegment.segment.fileName)")
                     onUnlink?()
                 }) {
                     HStack(spacing: 4) {
@@ -203,14 +192,8 @@ struct TreeLinkedSegmentRowView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Remove manual link")
-                .onAppear {
-                    NSLog(
-                        "🔍 DEBUG: Showing unlink button for \(linkedSegment.segment.fileName) - method: \(linkedSegment.linkMethod), override: \(project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName) ?? "nil")"
-                    )
-                }
             }
         }
-        .padding(.leading, 20)
         .opacity(isOffline ? 0.6 : 1.0)
     }
 
