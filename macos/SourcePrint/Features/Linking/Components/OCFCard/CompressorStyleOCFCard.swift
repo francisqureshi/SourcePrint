@@ -125,6 +125,11 @@ struct CompressorStyleOCFCard: View {
     var body: some View {
         cardContent
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.accentColor, lineWidth: 2)
+                    .opacity(isSelected ? 1 : 0)
+            )
             .onReceive(NotificationCenter.default.publisher(for: .expandSelectedCards)) { _ in
                 if isSelected {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -204,7 +209,7 @@ struct CompressorStyleOCFCard: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.accentColor.opacity(0.3) : Color.appBackgroundSecondary)
+                .background(Color.appBackgroundSecondary)
             }
 
             // Card body (expandable content)
@@ -253,7 +258,7 @@ struct CompressorStyleOCFCard: View {
         .padding(.top, 0)
         .padding(.horizontal, 4)
         .padding(.bottom, 4)
-        .background(isSelected ? Color.accentColor.opacity(0.3) : Color.appBackgroundSecondary)
+        .background(Color.appBackgroundSecondary)
         .contentShape(Rectangle())
         .onTapGesture {
             handleCardSelection()
@@ -341,7 +346,7 @@ struct OCFCardHeader: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(isSelected ? Color.accentColor.opacity(0.3) : Color.appBackgroundSecondary)
+        .background(Color.appBackgroundSecondary)
         .onTapGesture {
             onCardSelection()
         }
