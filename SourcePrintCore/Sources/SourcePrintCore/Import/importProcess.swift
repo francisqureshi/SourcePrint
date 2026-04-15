@@ -260,6 +260,16 @@ public class MediaAnalyzer {
                     resolution = Resolution(
                         width: Int(codecPar.width), height: Int(codecPar.height))
 
+                    // Check for ARRI sensor active area (takes priority over SAR)
+                    // "com.arri.camera.sensor.PhotoSites" = "2880x2160" (active pixels, not container)
+                    if let photoSites = fmtCtx.metadata["com.arri.camera.sensor.PhotoSites"] {
+                        let parts = photoSites.split(separator: "x")
+                        if parts.count == 2, let w = Double(parts[0]), let h = Double(parts[1]) {
+                            displayResolution = Resolution(width: w, height: h)
+                            print("    📐 ARRI PhotoSites active area: \(photoSites)")
+                        }
+                    }
+
                     // Extract Sample Aspect Ratio and calculate display resolution
                     let sar = stream.sampleAspectRatio
                     if sar.den > 0 && sar.num > 0 {
