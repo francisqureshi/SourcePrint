@@ -314,6 +314,27 @@ struct OCFCardHeader: View {
     let onRenderSingle: () -> Void
     let onCardSelection: () -> Void
 
+    private static let printDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "dd/MM/yyyy @ HH:mm"
+        return f
+    }()
+
+    private var printStatusDate: Date? {
+        switch project.model.printStatus[fileName] {
+        case .printed(let date, _): return date
+        default: return nil
+        }
+    }
+
+    private var printStatusLabel: String {
+        switch project.model.printStatus[fileName] {
+        case .printed: return "Printed"
+        case .needsReprint: return "Needs Re-print"
+        case .notPrinted, nil: return "Not Printed"
+        }
+    }
+
     var body: some View {
         HStack {
             // OCF filename as main title (clickable)
@@ -327,6 +348,12 @@ struct OCFCardHeader: View {
                     .font(.headline)
                     .foregroundColor(.white)
                     .lineLimit(1)
+                    .contextMenu {
+                        Button("Copy Filename") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(fileName, forType: .string)
+                        }
+                    }
             }
             .buttonStyle(.plain)
 
@@ -358,9 +385,14 @@ struct OCFCardHeader: View {
                 if let printStatus = project.model.printStatus[fileName] {
                     Image(systemName: printStatus.icon)
                         .foregroundColor(printStatus.color)
-                    Text(printStatus.displayName)
-                        .font(.caption)
-                        .foregroundColor(printStatus.color)
+                    HStack(spacing: 4) {
+                        Text(printStatusLabel)
+                        if let date = printStatusDate {
+                            Text(Self.printDateFormatter.string(from: date))
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundColor(printStatus.color)
                 } else {
                     Image(systemName: "circle")
                         .foregroundColor(.secondary)

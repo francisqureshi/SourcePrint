@@ -8,6 +8,12 @@
 import SourcePrintCore
 import SwiftUI
 
+private let renderLogDateFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "dd/MM/yyyy @ HH:mm"
+    return f
+}()
+
 struct RenderLogSection: View {
     @ObservedObject var project: ProjectViewModel
     let ocfFileName: String
@@ -97,12 +103,12 @@ struct RenderLogSection: View {
                                     .font(.caption)
                                     .foregroundColor(print.success ? .green : .red)
 
-                                Text(RelativeDateTimeFormatter.shared.localizedString(for: print.date, relativeTo: Date()))
+                                Text(renderLogDateFormatter.string(from: print.date))
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
 
-                            Text(String(format: "%.1fs • %d segments", print.duration, print.segmentCount))
+                            Text(String(format: "%d segments printed in %.1fs", print.segmentCount, print.duration))
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                                 .monospacedDigit()
