@@ -12,62 +12,97 @@ struct NewProjectSheet: View {
     @EnvironmentObject var projectManager: ProjectManager
     @Environment(\.dismiss) private var dismiss
 
-    @State private var projectName = ""
     @State private var outputDirectory: URL?
     @State private var blankRushDirectory: URL?
     @State private var projectSaveLocation: URL?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Project Information") {
-                    TextField("Project Name", text: $projectName)
-                        .textFieldStyle(.roundedBorder)
-
-                    DirectoryPickerRow(
-                        title: "Save Project To",
-                        url: $projectSaveLocation,
-                        placeholder: "Choose where to save project...",
-                        isFilePicker: true,
-                        projectName: projectName
-                    )
-                }
-
-                Section("Directories") {
-                    DirectoryPickerRow(
-                        title: "Output Directory",
-                        url: $outputDirectory,
-                        placeholder: "Choose output directory..."
-                    )
-
-                    DirectoryPickerRow(
-                        title: "Blank Rush Directory",
-                        url: $blankRushDirectory,
-                        placeholder: "Choose blank rush directory..."
-                    )
-                }
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("New Project")
+                    .font(.headline)
+                Spacer()
             }
-            .navigationTitle("New Project")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        createProject()
-                    }
+            Divider()
+
+            // Fields
+            VStack(spacing: 12) {
+                projectRow(
+                    label: "Save Project To",
+                    url: $projectSaveLocation,
+                    placeholder: "Choose location...",
+                    isFilePicker: true
+                )
+                Divider()
+                projectRow(
+                    label: "Output Directory",
+                    url: $outputDirectory,
+                    placeholder: "Choose output directory..."
+                )
+                Divider()
+                projectRow(
+                    label: "Blank Rush Directory",
+                    url: $blankRushDirectory,
+                    placeholder: "Choose blank rush directory..."
+                )
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+
+            Divider()
+
+            // Footer buttons
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Create") { createProject() }
+                    .keyboardShortcut(.defaultAction)
                     .disabled(!isValidProject)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .frame(width: 460)
+    }
+
+    @ViewBuilder
+    private func projectRow(label: String, url: Binding<URL?>, placeholder: String, isFilePicker: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .frame(width: 150, alignment: .leading)
+                .foregroundColor(.secondary)
+                .font(.system(size: 13))
+
+            if let u = url.wrappedValue {
+                Text(isFilePicker ? u.path : u.lastPathComponent)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(placeholder)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button("Choose...") {
+                if isFilePicker {
+                    pickSaveLocation(binding: url)
+                } else {
+                    pickDirectory(binding: url)
                 }
             }
+            .controlSize(.small)
         }
-        .frame(width: 500, height: 350)
     }
 
     private var isValidProject: Bool {
-        !projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         outputDirectory != nil &&
         blankRushDirectory != nil &&
         projectSaveLocation != nil
@@ -78,9 +113,10 @@ struct NewProjectSheet: View {
               let blankRushDir = blankRushDirectory,
               let saveLocation = projectSaveLocation else { return }
 
-        let trimmedName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = saveLocation.deletingPathExtension().lastPathComponent
+
         _ = projectManager.createNewProject(
-            name: trimmedName,
+            name: name,
             outputDirectory: outputDir,
             blankRushDirectory: blankRushDir,
             saveLocation: saveLocation
@@ -88,66 +124,33 @@ struct NewProjectSheet: View {
 
         dismiss()
     }
-}
 
-struct DirectoryPickerRow: View {
-    let title: String
-    @Binding var url: URL?
-    let placeholder: String
-    var isFilePicker: Bool = false
-    var projectName: String = ""
+    private func pickSaveLocation(binding: Binding<URL?>) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.data]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "Untitled"
+        panel.title = "Save Project"
+        panel.message = "Choose where to save your project file"
 
-    var body: some View {
-        HStack {
-            Text(title)
-                .frame(width: 140, alignment: .leading)
-
-            Button(displayText) {
-                if isFilePicker {
-                    selectFileSaveLocation()
-                } else {
-                    selectDirectory()
-                }
+        if panel.runModal() == .OK, let panelURL = panel.url {
+            var base = panelURL
+            while base.pathExtension.lowercased() == "w2" {
+                base = base.deletingPathExtension()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .foregroundColor(url == nil ? .secondary : .primary)
+            binding.wrappedValue = base.appendingPathExtension("w2")
         }
     }
 
-    private var displayText: String {
-        if let url = url {
-            if isFilePicker {
-                // Show the full path for file save location
-                return url.path
-            } else {
-                // Just show last path component for directories
-                return url.lastPathComponent
-            }
-        }
-        return placeholder
-    }
-
-    private func selectDirectory() {
+    private func pickDirectory(binding: Binding<URL?>) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-
-        if panel.runModal() == .OK {
-            url = panel.url
-        }
-    }
-
-    private func selectFileSaveLocation() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.data]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = projectName.isEmpty ? "Untitled.w2" : "\(projectName).w2"
-        panel.title = "Save Project"
-        panel.message = "Choose where to save your project file"
 
         if panel.runModal() == .OK {
-            url = panel.url
+            binding.wrappedValue = panel.url
         }
     }
 }

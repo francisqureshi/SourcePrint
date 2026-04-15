@@ -112,8 +112,11 @@ class ProjectManager: ObservableObject {
             if let viewModel = try? decoder.decode(ProjectViewModel.self, from: data) {
                 NSLog("✅ Successfully decoded ProjectViewModel: \(viewModel.model.name)")
 
-                // Update project name to match filename (without extension)
-                let filenameWithoutExtension = url.deletingPathExtension().lastPathComponent
+                // Update project name to match filename (strip all .w2 extensions)
+                var filenameWithoutExtension = url.deletingPathExtension().lastPathComponent
+                if filenameWithoutExtension.hasSuffix(".w2") {
+                    filenameWithoutExtension = (filenameWithoutExtension as NSString).deletingPathExtension
+                }
                 if viewModel.model.name != filenameWithoutExtension {
                     NSLog("📝 Updating project name from '\(viewModel.model.name)' to '\(filenameWithoutExtension)' (based on filename)")
                     viewModel.model.name = filenameWithoutExtension
@@ -223,8 +226,14 @@ class ProjectManager: ObservableObject {
         let url: URL
         if let originalFileURL = viewModel.model.fileURL {
             // Check if project name has changed - if so, update filename to match
-            let currentFilename = originalFileURL.deletingPathExtension().lastPathComponent
-            let expectedFilename = viewModel.model.name  // Keep natural filename with spaces
+            var currentFilename = originalFileURL.deletingPathExtension().lastPathComponent
+            if currentFilename.lowercased().hasSuffix(".w2") {
+                currentFilename = String(currentFilename.dropLast(3))
+            }
+            var expectedFilename = viewModel.model.name
+            if expectedFilename.lowercased().hasSuffix(".w2") {
+                expectedFilename = String(expectedFilename.dropLast(3))
+            }
 
             if currentFilename != expectedFilename {
                 // Project name changed - update filename to match
@@ -315,12 +324,18 @@ class ProjectManager: ObservableObject {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.data]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = "\(viewModel.model.name).w2"
+        panel.nameFieldStringValue = viewModel.model.name
         panel.title = "Save ProResWriter Project"
         panel.message = "Choose a location to save your project"
 
         let result = panel.runModal()
-        if result == .OK, let url = panel.url {
+        if result == .OK, var url = panel.url {
+            // Normalize to exactly one .w2 extension
+            var base = url
+            while base.pathExtension.lowercased() == "w2" {
+                base = base.deletingPathExtension()
+            }
+            url = base.appendingPathExtension("w2")
             do {
                 let encoder = JSONEncoder()
                 encoder.dateEncodingStrategy = .iso8601
