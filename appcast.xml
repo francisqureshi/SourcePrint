@@ -9,6 +9,26 @@
         <!-- Sparkle Public Key (for signing): 7Gzr9LEfP3ZrSaHS6XqWPjU6x/GtNWzwAUTFfEAr5wI= -->
 
         <item>
+            <title>Version 0.3.6</title>
+            <description><![CDATA[
+                <h2>SourcePrint v0.3.6</h2>
+                <ul>
+                    <li>ArriRAW MXF support!</li>
+                </ul>
+            ]]></description>
+            <pubDate>Thu, 16 Apr 2026 09:27:52 +0000</pubDate>
+            <sparkle:version>283</sparkle:version>
+            <sparkle:shortVersionString>0.3.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/francisqureshi/SourcePrint/releases/download/v0.3.6/SourcePrint-0.3.6.zip"
+                sparkle:edSignature="2GgZV7QQl7yC2wwuF4sY1/+0RyCyupeBF4JmibfsH9EsWb/yTOBgVYNhegG28UQ8A0VH4nEV3ghULEHhCbl4Ag=="
+                length="19717241"
+                type="application/octet-stream"
+            />
+        </item>
+
+        <item>
             <title>Version 0.3.5</title>
             <description><![CDATA[
                 <h2>SourcePrint v0.3.5</h2>
