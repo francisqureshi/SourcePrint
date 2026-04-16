@@ -13,6 +13,26 @@
             <description><![CDATA[
                 <h2>SourcePrint v0.3.5</h2>
                 <ul>
+                    <li>ArriRAW MXF Support!</li>
+                </ul>
+            ]]></description>
+            <pubDate>Thu, 16 Apr 2026 09:25:06 +0000</pubDate>
+            <sparkle:version>282</sparkle:version>
+            <sparkle:shortVersionString>0.3.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/francisqureshi/SourcePrint/releases/download/v0.3.5/SourcePrint-0.3.5.zip"
+                sparkle:edSignature="JN3H7DdiMSxvUmUlx1huAxzdrt56+JqVKsugPkW39g/0w7cLI4NPdm1Q/71G0vy+yST9ehfTAM6LlrUI/uztCw=="
+                length="19715900"
+                type="application/octet-stream"
+            />
+        </item>
+
+        <item>
+            <title>Version 0.3.5</title>
+            <description><![CDATA[
+                <h2>SourcePrint v0.3.5</h2>
+                <ul>
                     <li>fix ARRI Active Area Pixel size 2944×2160 vs 2880×2160 etc</li>
                 </ul>
             ]]></description>
