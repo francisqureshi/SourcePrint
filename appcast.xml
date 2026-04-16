@@ -9,6 +9,26 @@
         <!-- Sparkle Public Key (for signing): 7Gzr9LEfP3ZrSaHS6XqWPjU6x/GtNWzwAUTFfEAr5wI= -->
 
         <item>
+            <title>Version 0.3.7</title>
+            <description><![CDATA[
+                <h2>SourcePrint v0.3.7</h2>
+                <ul>
+                    <li>Added right click menu item: Reveal in Finder for files in Media page</li>
+                </ul>
+            ]]></description>
+            <pubDate>Thu, 16 Apr 2026 10:00:13 +0000</pubDate>
+            <sparkle:version>286</sparkle:version>
+            <sparkle:shortVersionString>0.3.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/francisqureshi/SourcePrint/releases/download/v0.3.7/SourcePrint-0.3.7.zip"
+                sparkle:edSignature="6ojy4mM063ZjGAEdpCVG61Rc7odu7/WwFOqWFNN84P7hqKpaqy6O1/rJuA0nBkfOijt8DVwcWEZjVEERF+TNCw=="
+                length="19717243"
+                type="application/octet-stream"
+            />
+        </item>
+
+        <item>
             <title>Version 0.3.6</title>
             <description><![CDATA[
                 <h2>SourcePrint v0.3.6</h2>
