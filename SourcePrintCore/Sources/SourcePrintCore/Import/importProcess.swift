@@ -255,22 +255,26 @@ public class MediaAnalyzer {
                 let stream = fmtCtx.streams[Int(i)]
                 let codecPar = stream.codecParameters
 
-                // Check if this is a video stream by checking if it has width/height
-                if codecPar.width > 0 && codecPar.height > 0 {
-                    resolution = Resolution(
-                        width: Int(codecPar.width), height: Int(codecPar.height))
+                // Identify video stream by media type (catches ARRIRAW MXF where width=0)
+                if stream.mediaType == .video {
+                    if codecPar.width > 0 && codecPar.height > 0 {
+                        resolution = Resolution(
+                            width: Int(codecPar.width), height: Int(codecPar.height))
 
-                    // Check for ARRI sensor active area (takes priority over SAR)
-                    // "com.arri.camera.sensor.PhotoSites" = "2880x2160" (active pixels, not container)
-                    if let photoSites = fmtCtx.metadata["com.arri.camera.sensor.PhotoSites"] {
-                        let parts = photoSites.split(separator: "x")
-                        if parts.count == 2, let w = Double(parts[0]), let h = Double(parts[1]) {
-                            displayResolution = Resolution(width: w, height: h)
-                            print("    📐 ARRI PhotoSites active area: \(photoSites)")
+                        // Check for ARRI sensor active area (takes priority over SAR)
+                        // "com.arri.camera.sensor.PhotoSites" = "2880x2160" (active pixels, not container)
+                        if let photoSites = fmtCtx.metadata["com.arri.camera.sensor.PhotoSites"] {
+                            let parts = photoSites.split(separator: "x")
+                            if parts.count == 2, let w = Double(parts[0]), let h = Double(parts[1]) {
+                                displayResolution = Resolution(width: w, height: h)
+                                print("    📐 ARRI PhotoSites active area: \(photoSites)")
+                            }
                         }
+                    } else {
+                        print("    ⚠️ Video stream has no codec dimensions (ARRIRAW MXF?) — will try binary MXF parse")
                     }
 
-                    // Extract Sample Aspect Ratio and calculate display resolution
+                    // Extract Sample Aspect Ratio and calculate display resolution (only if we have coded dims)
                     let sar = stream.sampleAspectRatio
                     if sar.den > 0 && sar.num > 0 {
                         sampleAspectRatio = "\(sar.num):\(sar.den)"
@@ -279,9 +283,9 @@ public class MediaAnalyzer {
                         )
 
                         // Calculate display resolution (SAR-corrected) during import
-                        if sampleAspectRatio != "1:1" {
-                            let displayWidth = Double(resolution!.width) * Double(sar.num) / Double(sar.den)
-                            displayResolution = Resolution(width: displayWidth, height: resolution!.height)
+                        if sampleAspectRatio != "1:1", let codedRes = resolution {
+                            let displayWidth = Double(codedRes.width) * Double(sar.num) / Double(sar.den)
+                            displayResolution = Resolution(width: displayWidth, height: codedRes.height)
                             print(
                                 "    📺 SAR-corrected display resolution: \(Int(displayResolution!.width))x\(Int(displayResolution!.height))"
                             )
@@ -389,6 +393,17 @@ public class MediaAnalyzer {
             }
         } catch {
             print("    ⚠️ FFmpeg analysis failed: \(error) - no media properties available")
+        }
+
+        // MARK: - MXF Binary Resolution Fallback (ARRIRAW)
+        // FFmpeg cannot parse ARRIRAW codec descriptors, so resolution comes back nil.
+        // Standard MXF local tags (StoredWidth 0x3203, StoredHeight 0x3202) are still present
+        // in the header partition and readable directly from the binary.
+        if resolution == nil && url.pathExtension.lowercased() == "mxf" {
+            if let mxfRes = extractMXFResolution(from: url) {
+                resolution = mxfRes
+                print("    📐 MXF binary parse: \(Int(mxfRes.width))x\(Int(mxfRes.height))")
+            }
         }
 
         // MARK: - Pre-Compute Frame Numbers
@@ -578,6 +593,47 @@ public class MediaAnalyzer {
         default:
             return "unknown"
         }
+    }
+
+    /// Read StoredWidth (0x3203) and StoredHeight (0x3202) from MXF header partition binary.
+    /// Used when FFmpeg cannot parse the codec descriptor (e.g. ARRIRAW proprietary descriptor).
+    private func extractMXFResolution(from url: URL) -> Resolution? {
+        guard let fileHandle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? fileHandle.close() }
+
+        // MXF header partition is always at the start — 2MB covers all known ARRI header sizes
+        let headerData = fileHandle.readData(ofLength: 2 * 1024 * 1024)
+        let bytes = [UInt8](headerData)
+
+        var storedWidth: UInt32? = nil
+        var storedHeight: UInt32? = nil
+
+        // Linear scan for MXF local tags (2-byte tag + 2-byte length + value)
+        // 0x3203 = StoredWidth, 0x3202 = StoredHeight — both encoded as 4-byte big-endian UInt32
+        var i = 0
+        while i < bytes.count - 8 {
+            let tag = UInt16(bytes[i]) << 8 | UInt16(bytes[i + 1])
+            let length = UInt16(bytes[i + 2]) << 8 | UInt16(bytes[i + 3])
+
+            if (tag == 0x3203 || tag == 0x3202) && length == 4 {
+                let value = UInt32(bytes[i + 4]) << 24 | UInt32(bytes[i + 5]) << 16
+                             | UInt32(bytes[i + 6]) << 8  | UInt32(bytes[i + 7])
+                if value > 0 && value < 20000 {  // sanity: no camera shoots above 20K pixels
+                    if tag == 0x3203 { storedWidth = value }
+                    if tag == 0x3202 { storedHeight = value }
+                }
+            }
+
+            if let w = storedWidth, let h = storedHeight {
+                return Resolution(width: Int(w), height: Int(h))
+            }
+            i += 1
+        }
+
+        if let w = storedWidth, let h = storedHeight {
+            return Resolution(width: Int(w), height: Int(h))
+        }
+        return nil
     }
 
     private func determineInterlacingFromMetadata(key: String, value: String) -> Bool? {
