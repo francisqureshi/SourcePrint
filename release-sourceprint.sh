@@ -120,13 +120,27 @@ echo ""
 echo -e "${BLUE}📡 Updating appcast.xml...${NC}"
 
 PUBDATE=$(date -u '+%a, %d %b %Y %H:%M:%S +0000')
+
+# Extract the existing cumulative changelog from the current top item's description
+# so we can carry it forward into the new item (Sparkle only shows the latest item's description)
+PREV_HISTORY=$(python3 - <<'PYEOF'
+import re, sys
+content = open("appcast.xml").read()
+m = re.search(r'<description><!\[CDATA\[(.*?)\]\]></description>', content, re.DOTALL)
+if m:
+    print(m.group(1).strip())
+PYEOF
+)
+
 NEW_ITEM="        <item>
             <title>Version $VERSION</title>
             <description><![CDATA[
-                <h2>SourcePrint v$VERSION</h2>
+                <h2>v$VERSION</h2>
                 <ul>
                     <li>$NOTES</li>
                 </ul>
+
+                $PREV_HISTORY
             ]]></description>
             <pubDate>$PUBDATE</pubDate>
             <sparkle:version>$BUILD</sparkle:version>
