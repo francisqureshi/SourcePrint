@@ -9,6 +9,76 @@
         <!-- Sparkle Public Key (for signing): 7Gzr9LEfP3ZrSaHS6XqWPjU6x/GtNWzwAUTFfEAr5wI= -->
 
         <item>
+            <title>Version 0.3.8</title>
+            <description><![CDATA[
+                <h2>v0.3.8</h2>
+                <ul>
+                    <li>Added full log to update window</li>
+                </ul>
+
+                <h2>v0.3.7</h2>
+                <ul>
+                    <li>Right-click → Reveal in Finder on media file rows</li>
+                </ul>
+
+                <h2>v0.3.6</h2>
+                <ul>
+                    <li>ARRIRAW MXF support — resolution read directly from MXF binary header</li>
+                </ul>
+
+                <h2>v0.3.5</h2>
+                <ul>
+                    <li>Fix ARRI active area resolution (2880×2160 vs container 2944×2160 etc.)</li>
+                </ul>
+
+                <h2>v0.3.4</h2>
+                <ul>
+                    <li>Segment and print status improvements</li>
+                    <li>Right-click clip name to copy filename</li>
+                </ul>
+
+                <h2>v0.3.3</h2>
+                <ul>
+                    <li>Fixed and redesigned the New Project pane (.w2 file naming)</li>
+                    <li>Optional auto-select of blank rush folder</li>
+                </ul>
+
+                <h2>v0.3.1 – v0.3.2</h2>
+                <ul>
+                    <li>Fixed Link Files button not triggering on first press from Media Import tab</li>
+                    <li>Removed unreliable automatic linking after every file import</li>
+                    <li>Removed Project Validation Warnings popup on project load</li>
+                </ul>
+
+                <h2>v0.2.0</h2>
+                <ul>
+                    <li>Fixed Watch Folder</li>
+                    <li>Manual link for 00:00:00:00 TC shots</li>
+                    <li>User interface updates</li>
+                </ul>
+
+                <h2>v0.1.3 – v0.1.8</h2>
+                <ul>
+                    <li>Initial release with automatic updates</li>
+                    <li>Production-ready watch folder system</li>
+                    <li>Frame-accurate ProRes 4444 workflow</li>
+                    <li>Professional timecode support</li>
+                    <li>Static FFmpeg 7.1.2 bundled into app</li>
+                </ul>
+            ]]></description>
+            <pubDate>Thu, 16 Apr 2026 10:11:07 +0000</pubDate>
+            <sparkle:version>287</sparkle:version>
+            <sparkle:shortVersionString>0.3.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/francisqureshi/SourcePrint/releases/download/v0.3.8/SourcePrint-0.3.8.zip"
+                sparkle:edSignature="9+xkQUewAs2KibdcuoMTpTXm1ZK6c2q+cLXE+9EALkRxulvyV8EhRZBNZclAcG+OayKMrWSeaT5LkGOi4VbYDg=="
+                length="19716853"
+                type="application/octet-stream"
+            />
+        </item>
+
+        <item>
             <title>Version 0.3.7</title>
             <description><![CDATA[
                 <h2>v0.3.7</h2>
