@@ -287,10 +287,15 @@ struct MediaFileColumnTableView: View {
                     Label(file.isVFX ? "Unmark as VFX Shot" : "Mark as VFX Shot",
                           systemImage: file.isVFX ? "wand.and.stars.slash" : "wand.and.stars")
                 }
-                
-                Divider()
             }
-            
+
+            if items.count == 1, let fileName = items.first,
+               let file = files.first(where: { $0.fileName == fileName }) {
+                Button("Reveal in Finder", systemImage: "folder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([file.url])
+                }
+            }
+
             Button("Remove from Project", systemImage: "trash") {
                 onRemoveFiles(Array(items))
             }
