@@ -73,7 +73,7 @@ struct TreeLinkedSegmentRowView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             // LEFT: confidence + film icons, filename as label text
             Label {
                 Text(linkedSegment.segment.fileName)
@@ -98,9 +98,20 @@ struct TreeLinkedSegmentRowView: View {
 
             Spacer()
 
-            // RIGHT: badges, timecode, and modified status — trailing aligned
-            VStack(alignment: .trailing, spacing: 2) {
-                HStack(spacing: 4) {
+            // MIDDLE: modified badge — shown inline when file changed since last print
+            if let modDate = modifiedFileDate {
+                Text("MODIFIED • \(Self.modifiedDateFormatter.string(from: modDate))")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(AppTheme.warning.opacity(0.15))
+                    .foregroundColor(AppTheme.warning)
+                    .cornerRadius(3)
+            }
+
+            // RIGHT: badges and timecode — trailing aligned
+            HStack(spacing: 4) {
                     if isVFXShot {
                         Text("VFX")
                             .fontWeight(.medium)
@@ -141,18 +152,6 @@ struct TreeLinkedSegmentRowView: View {
                 }
                 .font(.caption2)
                 .foregroundColor(.secondary)
-
-                if let modDate = modifiedFileDate {
-                    Text("MODIFIED • \(Self.modifiedDateFormatter.string(from: modDate))")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(AppTheme.warning.opacity(0.15))
-                        .foregroundColor(AppTheme.warning)
-                        .cornerRadius(3)
-                }
-            }
 
             // Reveal in Finder
             Button(action: {
