@@ -242,15 +242,17 @@ public enum BlankRushStatus: Codable, Equatable {
 public struct PrintRecord: Codable, Identifiable {
     public let id: UUID
     public let date: Date
+    public let ocfURL: URL?
     public let ocfFileName: String
     public let outputURL: URL
     public let segmentCount: Int
     public let duration: TimeInterval
     public let success: Bool
 
-    public init(id: UUID = UUID(), date: Date, ocfFileName: String, outputURL: URL, segmentCount: Int = 0, duration: TimeInterval, success: Bool = true) {
+    public init(id: UUID = UUID(), date: Date, ocfFileName: String, ocfURL: URL? = nil, outputURL: URL, segmentCount: Int = 0, duration: TimeInterval, success: Bool = true) {
         self.id = id
         self.date = date
+        self.ocfURL = ocfURL
         self.ocfFileName = ocfFileName
         self.outputURL = outputURL
         self.segmentCount = segmentCount
