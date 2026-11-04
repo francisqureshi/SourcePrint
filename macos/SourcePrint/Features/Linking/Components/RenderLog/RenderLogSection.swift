@@ -15,38 +15,12 @@ private let renderLogDateFormatter: DateFormatter = {
 }()
 
 struct RenderLogSection: View {
-    @ObservedObject var project: ProjectViewModel
-    let ocfFileName: String
+    let blankRushStatus: BlankRushStatus
+    let mostRecentPrint: SourcePrintCore.PrintRecord?
+    @State private var missingBlankRush: BlankRushStatus?
 
-    // Filter print history for this specific OCF
-    private var relevantPrintHistory: [SourcePrintCore.PrintRecord] {
-        let baseName = (ocfFileName as NSString).deletingPathExtension
-        return project.model.printHistory.filter { record in
-            record.outputURL.lastPathComponent.contains(baseName)
-        }.sorted { $0.date > $1.date } // Most recent first
-    }
-
-    private var mostRecentPrint: SourcePrintCore.PrintRecord? {
-        relevantPrintHistory.first
-    }
-
-    private var blankRushStatus: BlankRushStatus {
-        project.model.blankRushStatus[ocfFileName] ?? .notCreated
-    }
-
-    // Actual status verified against file system
     private var actualBlankRushStatus: BlankRushStatus {
-        let storedStatus = project.model.blankRushStatus[ocfFileName] ?? .notCreated
-
-        // Verify file existence for "completed" status
-        if case .completed(_, let url) = storedStatus {
-            if !FileManager.default.fileExists(atPath: url.path) {
-                // File is missing - return .notCreated instead
-                return .notCreated
-            }
-        }
-
-        return storedStatus
+        blankRushStatus == missingBlankRush ? .notCreated : blankRushStatus
     }
 
     var body: some View {
@@ -139,6 +113,17 @@ struct RenderLogSection: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+        .task(id: blankRushStatus) {
+            guard case .completed(_, let url) = blankRushStatus else {
+                missingBlankRush = nil
+                return
+            }
+            let exists = await Task.detached(priority: .utility) {
+                FileManager.default.fileExists(atPath: url.path)
+            }.value
+            guard !Task.isCancelled else { return }
+            missingBlankRush = exists ? nil : blankRushStatus
+        }
     }
 
     // MARK: - Blank Rush Status

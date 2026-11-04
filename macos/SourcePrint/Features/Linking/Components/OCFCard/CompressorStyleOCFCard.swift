@@ -136,8 +136,8 @@ struct CompressorStyleOCFCard: View {
 
                 // Render Log Section
                 RenderLogSection(
-                    project: project,
-                    ocfFileName: parent.ocf.fileName
+                    blankRushStatus: project.model.blankRushStatus[parent.ocf.fileName] ?? .notCreated,
+                    mostRecentPrint: project.latestPrintByOCF[parent.ocf.fileName]
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -165,10 +165,11 @@ struct CompressorStyleOCFCard: View {
     private var segmentsListView: some View {
         GroupBox {
             VStack(spacing: 0) {
-                ForEach(Array(sortedByTimecode(parent.children).enumerated()), id: \.element.segment.fileName) { index, linkedSegment in
+                let segments = sortedByTimecode(parent.children)
+                ForEach(Array(segments.enumerated()), id: \.element.segment.fileName) { index, linkedSegment in
                     TreeLinkedSegmentRowView(
                         linkedSegment: linkedSegment,
-                        isLast: linkedSegment.segment.fileName == sortedByTimecode(parent.children).last?.segment.fileName,
+                        isLast: index == segments.count - 1,
                         ocfFileName: parent.ocf.fileName,
                         project: project,
                         onUnlink: {

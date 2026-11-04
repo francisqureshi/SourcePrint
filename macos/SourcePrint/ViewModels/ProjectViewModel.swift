@@ -90,6 +90,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
         self.renderQueue = renderQueue
         self.ocfCardExpansionState = ocfCardExpansionState
         self.watchFolderSettings = watchFolderSettings
+        model.printHistory.forEach(indexPrint)
     }
 
     // MARK: - Codable Implementation
@@ -105,6 +106,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
         self.renderQueue = projectContainer.renderQueue
         self.ocfCardExpansionState = projectContainer.ocfCardExpansionState
         self.watchFolderSettings = projectContainer.watchFolderSettings
+        model.printHistory.forEach(indexPrint)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -192,7 +194,16 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
         return model.manualLinkOverrides[segmentFileName]
     }
 
+    // Build once when loading saved history, then index each completed render.
+    private(set) var latestPrintByOCF: [String: SourcePrintCore.PrintRecord] = [:]
+
+    private func indexPrint(_ record: SourcePrintCore.PrintRecord) {
+        if let previous = latestPrintByOCF[record.ocfFileName], previous.date >= record.date { return }
+        latestPrintByOCF[record.ocfFileName] = record
+    }
+
     func addPrintRecord(_ record: SourcePrintCore.PrintRecord) {
+        indexPrint(record)
         // Directly append Core PrintRecord
         model.printHistory.append(record)
         model.lastPrintDate = record.date
