@@ -105,13 +105,15 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
     // MARK: - Public API
 
     /// Add items to the queue
-    public func addToQueue(_ parents: [OCFParent]) {
+    public func addToQueue(_ parents: [OCFParent], batchName: String = "Render Jobs") {
+        let batch = RenderBatch(name: batchName, jobCount: parents.count)
         let newItems = parents.map { parent in
             RuntimeRenderQueueItem(
                 ocfFileName: parent.ocf.fileName,
                 ocfParent: parent,
                 status: .pending,
-                progress: "Waiting in queue..."
+                progress: "Waiting in queue...",
+                batch: batch
             )
         }
 
@@ -219,7 +221,8 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
             delegate?.queueManager(self, didStartItem: item)
 
             // Wait for render to complete (with timeout)
-            let result = await waitForRenderCompletion(item: item)
+            var result = await waitForRenderCompletion(item: item)
+            result.batch = item.batch
 
             // Update counters and publish result
             if result.success {
@@ -253,6 +256,7 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
             NSLog("❌ RenderService not configured!")
             return RenderResult(
                 ocfFileName: item.ocfFileName,
+                ocfURL: item.ocfParent.ocf.url,
                 success: false,
                 error: "RenderService not configured",
                 duration: 0,

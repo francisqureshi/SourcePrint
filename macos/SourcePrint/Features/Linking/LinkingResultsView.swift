@@ -65,6 +65,7 @@ struct LinkingResultsView: View {
     @State private var selectedUnmatchedFiles: Set<String> = []
     @State private var selectedOCFParents: Set<URL> = []
     @State private var showUnmatchedDrawer = true
+    @State private var showRenderLog = false
     @State private var unmatchedSearch = ""
     @State private var searchText: String = ""
 
@@ -182,7 +183,7 @@ struct LinkingResultsView: View {
 
         NSLog("🎬 Starting batch render for %d OCFs", ocfsToRender.count)
 
-        renderQueueManager.addToQueue(ocfsToRender)
+        renderQueueManager.addToQueue(ocfsToRender, batchName: "Render All")
         renderQueueManager.startProcessing()
     }
 
@@ -191,7 +192,7 @@ struct LinkingResultsView: View {
 
         NSLog("🔄 Starting batch render for %d modified OCFs", modifiedOCFs.count)
 
-        renderQueueManager.addToQueue(modifiedOCFs)
+        renderQueueManager.addToQueue(modifiedOCFs, batchName: "Render Modified")
         renderQueueManager.startProcessing()
     }
 
@@ -204,13 +205,13 @@ struct LinkingResultsView: View {
 
         NSLog("🎬 Starting batch render for %d selected OCFs", selectedOCFs.count)
 
-        renderQueueManager.addToQueue(selectedOCFs)
+        renderQueueManager.addToQueue(selectedOCFs, batchName: "Render Selected")
         renderQueueManager.startProcessing()
     }
 
     private func renderSingle(parent: OCFParent) {
         NSLog("🎬 Starting single render for: %@", parent.ocf.fileName)
-        renderQueueManager.addToQueue([parent])
+        renderQueueManager.addToQueue([parent], batchName: "Render Job")
         renderQueueManager.startProcessing()
     }
 
@@ -339,7 +340,9 @@ struct LinkingResultsView: View {
                     ?? project.model.outputDirectory.appendingPathComponent(result.ocfFileName),
                 segmentCount: result.segmentCount,
                 duration: result.duration,
-                success: true
+                success: true,
+                outputFingerprint: result.outputFingerprint,
+                batch: result.batch
             ))
 
             NSLog("✅ Updated project status for: \(result.ocfFileName)")
@@ -352,7 +355,10 @@ struct LinkingResultsView: View {
                 outputURL: project.model.outputDirectory.appendingPathComponent(result.ocfFileName),
                 segmentCount: result.segmentCount,
                 duration: result.duration,
-                success: false
+                success: false,
+                errorMessage: result.error,
+                cancelled: result.cancelled,
+                batch: result.batch
             ))
 
             NSLog("❌ Recorded failed render for: \(result.ocfFileName)")
@@ -438,12 +444,27 @@ struct LinkingResultsView: View {
     }
 
     private var mainContent: some View {
-        Group {
-            if linkingResult == nil {
-                noResultsView
-            } else {
-                linkingResultsContent
+        HStack(spacing: 0) {
+            Group {
+                if linkingResult == nil {
+                    noResultsView
+                } else {
+                    linkingResultsContent
+                }
             }
+            if showRenderLog {
+                Divider()
+                RenderHistoryDrawer(records: project.model.printHistory, sources: project.model.ocfFiles, onClose: { showRenderLog = false })
+                    .frame(minWidth: 420, idealWidth: 500, maxWidth: 560)
+            }
+        }
+        .toolbar {
+            Button {
+                showRenderLog.toggle()
+            } label: {
+                Label("Render Log", systemImage: "clock.arrow.circlepath")
+            }
+            .help("Show render history")
         }
     }
 
@@ -751,7 +772,7 @@ struct LinkingResultsView: View {
             .frame(minWidth: 400)
 
             // Collapsible Unmatched Items Drawer
-            if showUnmatchedDrawer {
+            if showUnmatchedDrawer && !showRenderLog {
                 // Visual divider similar to Xcode
                 Rectangle()
                     .fill(Color.appBackgroundDivider)

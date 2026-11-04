@@ -19,11 +19,26 @@ public enum RenderStatus: String, Codable, Equatable {
     }
 }
 
+public struct RenderBatch: Codable, Equatable, Identifiable {
+    public let id: UUID
+    public let date: Date
+    public let name: String
+    public let jobCount: Int
+
+    public init(name: String, jobCount: Int) {
+        self.id = UUID()
+        self.date = Date()
+        self.name = name
+        self.jobCount = jobCount
+    }
+}
+
 // MARK: - Runtime Render Queue Item
 
 /// Represents a single item in the render queue at runtime (NOT Codable - includes OCFParent reference)
 /// For persistence, use the app's Codable RenderQueueItem instead
 public struct RuntimeRenderQueueItem: Identifiable, Equatable {
+    public let batch: RenderBatch?
     public let id: UUID
     public let ocfFileName: String
     public let ocfParent: OCFParent
@@ -45,8 +60,10 @@ public struct RuntimeRenderQueueItem: Identifiable, Equatable {
         startTime: Date? = nil,
         completionTime: Date? = nil,
         currentSegment: Int? = nil,
-        totalSegments: Int? = nil
+        totalSegments: Int? = nil,
+        batch: RenderBatch? = nil
     ) {
+        self.batch = batch
         self.id = id
         self.ocfFileName = ocfFileName
         self.ocfParent = ocfParent
@@ -119,6 +136,9 @@ public struct RenderProgress: Equatable {
 
 /// Result of a render operation
 public struct RenderResult: Equatable {
+    public var batch: RenderBatch? = nil
+    public let cancelled: Bool
+    public let outputFingerprint: RenderOutputFingerprint?
     public let ocfFileName: String
     public let ocfURL: URL?
     public let success: Bool
@@ -136,8 +156,12 @@ public struct RenderResult: Equatable {
         error: String? = nil,
         duration: TimeInterval,
         segmentCount: Int,
-        blankRushURL: URL? = nil
+        blankRushURL: URL? = nil,
+        cancelled: Bool = false,
+        outputFingerprint: RenderOutputFingerprint? = nil
     ) {
+        self.cancelled = cancelled
+        self.outputFingerprint = outputFingerprint
         self.ocfFileName = ocfFileName
         self.ocfURL = ocfURL
         self.success = success
@@ -151,6 +175,7 @@ public struct RenderResult: Equatable {
     public static func == (lhs: RenderResult, rhs: RenderResult) -> Bool {
         lhs.ocfFileName == rhs.ocfFileName &&
         lhs.ocfURL == rhs.ocfURL &&
+        lhs.cancelled == rhs.cancelled &&
         lhs.success == rhs.success &&
         lhs.outputURL == rhs.outputURL &&
         lhs.error == rhs.error
