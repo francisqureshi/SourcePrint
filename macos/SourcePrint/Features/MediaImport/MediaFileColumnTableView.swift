@@ -11,15 +11,14 @@ import SourcePrintCore
 struct MediaFileColumnTableView: View {
     let files: [MediaFileInfo]
     let type: MediaType
-    let selectedFiles: Binding<Set<String>>
     let offlineFiles: Set<String>
     let modificationDates: [String: Date]
-    let onVFXToggle: ((String, Bool) -> Void)?
-    let onRemoveFiles: ([String]) -> Void
+    let onVFXToggle: ((URL, Bool) -> Void)?
+    let onRemoveFiles: (Set<URL>) -> Void
     let onImportAction: (() -> Void)?
     let isAnalyzing: Bool
     
-    @State private var selection = Set<String>()
+    @State private var selection = Set<URL>()
     
     @State private var searchText = ""
 
@@ -88,7 +87,7 @@ struct MediaFileColumnTableView: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(8)
                 .onChange(of: searchText) {
-                    selection.formIntersection(visibleFiles.map(\.fileName))
+                    selection.formIntersection(visibleFiles.map(\.url))
                 }
             
             GeometryReader { geometry in
@@ -104,7 +103,8 @@ struct MediaFileColumnTableView: View {
         }
         .onDeleteCommand {
             if !selection.isEmpty {
-                onRemoveFiles(Array(selection))
+                onRemoveFiles(selection)
+                selection.removeAll()
             }
         }
     }
@@ -264,7 +264,7 @@ struct MediaFileColumnTableView: View {
     }
     
     private var fileRowsView: some View {
-        List(visibleFiles, id: \.fileName, selection: $selection) { file in
+        List(visibleFiles, id: \.url, selection: $selection) { file in
             MediaFileColumnRowView(
                 file: file.toDisplayInfo(),
                 type: type,
@@ -294,33 +294,30 @@ struct MediaFileColumnTableView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity)
-        .contextMenu(forSelectionType: String.self) { items in
-            if items.count == 1, let fileName = items.first,
-               let file = files.first(where: { $0.fileName == fileName }),
+        .contextMenu(forSelectionType: URL.self) { items in
+            if items.count == 1, let url = items.first,
+               let file = files.first(where: { $0.url == url }),
                type == .segment {
                 Button {
-                    onVFXToggle?(file.fileName, !file.isVFX)
+                    onVFXToggle?(file.url, !file.isVFX)
                 } label: {
                     Label(file.isVFX ? "Unmark as VFX Shot" : "Mark as VFX Shot",
                           systemImage: file.isVFX ? "wand.and.stars.slash" : "wand.and.stars")
                 }
             }
 
-            if items.count == 1, let fileName = items.first,
-               let file = files.first(where: { $0.fileName == fileName }) {
+            if items.count == 1, let url = items.first {
                 Button("Reveal in Finder", systemImage: "folder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([file.url])
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
                 }
             }
 
             Button("Remove from Project", systemImage: "trash") {
-                onRemoveFiles(Array(items))
+                onRemoveFiles(items)
+                selection.subtract(items)
             }
             .foregroundColor(.red)
             .disabled(items.isEmpty)
-        }
-        .onChange(of: selection) { oldValue, newValue in
-            selectedFiles.wrappedValue = newValue
         }
     }
     
@@ -420,7 +417,7 @@ struct MediaFileColumnRowView: View {
     let type: MediaFileColumnTableView.MediaType
     let isOffline: Bool
     let modificationDate: Date?
-    let onVFXToggle: ((String, Bool) -> Void)?
+    let onVFXToggle: ((URL, Bool) -> Void)?
     let columnWidths: ColumnWidths
 
     private var statusView: some View {
