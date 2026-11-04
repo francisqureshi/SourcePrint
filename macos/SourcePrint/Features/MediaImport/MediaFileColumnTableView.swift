@@ -8,6 +8,18 @@
 import SwiftUI
 import SourcePrintCore
 
+enum MediaColumn: String, CaseIterable {
+    case clipName = "Clip Name"
+    case startTC = "Start TC"
+    case endTC = "End TC"
+    case duration = "Duration"
+    case frames = "Frames"
+    case type = "Type"
+    case resolution = "Resolution"
+    case fps = "FPS"
+    case status = "Status"
+}
+
 struct MediaFileColumnTableView: View {
     let files: [MediaFileInfo]
     let type: MediaType
@@ -22,8 +34,41 @@ struct MediaFileColumnTableView: View {
     
     @State private var searchText = ""
 
+    @State private var sortColumn: MediaColumn?
+    @State private var ascending = true
+
     private var visibleFiles: [MediaFileInfo] {
-        searchText.isEmpty ? files : files.filter { $0.fileName.localizedCaseInsensitiveContains(searchText) }
+        let filtered = searchText.isEmpty ? files : files.filter { $0.fileName.localizedCaseInsensitiveContains(searchText) }
+        guard let sortColumn else { return filtered }
+        return filtered.sorted { first, second in
+            let (a, b) = ascending ? (first, second) : (second, first)
+            switch sortColumn {
+            case .clipName:
+                return a.fileName.localizedStandardCompare(b.fileName) == .orderedAscending
+            case .startTC: return (a.sourceTimecode ?? "") < (b.sourceTimecode ?? "")
+            case .endTC: return (a.endTimecode ?? "") < (b.endTimecode ?? "")
+            case .duration: return duration(a) < duration(b)
+            case .frames: return (a.durationInFrames ?? -1) < (b.durationInFrames ?? -1)
+            case .type: return a.mediaType == .originalCameraFile && b.mediaType == .gradedSegment
+            case .resolution:
+                let left = a.displayResolution ?? a.resolution
+                let right = b.displayResolution ?? b.resolution
+                return (left?.width ?? 0, left?.height ?? 0) < (right?.width ?? 0, right?.height ?? 0)
+            case .fps: return (a.frameRate?.floatValue ?? 0) < (b.frameRate?.floatValue ?? 0)
+            case .status: return status(a) < status(b)
+            }
+        }
+    }
+
+    private func duration(_ file: MediaFileInfo) -> Double {
+        guard let frames = file.durationInFrames, let rate = file.frameRate?.floatValue, rate > 0 else { return -1 }
+        return Double(frames) / Double(rate)
+    }
+
+    private func status(_ file: MediaFileInfo) -> (Int, Date) {
+        if offlineFiles.contains(file.fileName) { return (0, .distantPast) }
+        if let date = modificationDates[file.fileName] { return (1, date) }
+        return (2, .distantPast)
     }
 
     // Column width state - user adjustable and responsive
@@ -132,124 +177,47 @@ struct MediaFileColumnTableView: View {
         .background(AppTheme.backgroundSecondary)
     }
     
+    private var columns: [MediaColumn] {
+        MediaColumn.allCases.filter { type == .segment || $0 != .status }
+    }
+
+    private func dimensions(for column: MediaColumn) -> (Binding<CGFloat>, CGFloat) {
+        switch column {
+        case .clipName: return ($clipNameWidth, minClipNameWidth)
+        case .startTC: return ($startTCWidth, minStartTCWidth)
+        case .endTC: return ($endTCWidth, minEndTCWidth)
+        case .duration: return ($durationWidth, minDurationWidth)
+        case .frames: return ($framesWidth, minFramesWidth)
+        case .type: return ($typeWidth, minTypeWidth)
+        case .resolution: return ($resolutionWidth, minResolutionWidth)
+        case .fps: return ($fpsWidth, minFpsWidth)
+        case .status: return ($statusWidth, minStatusWidth)
+        }
+    }
+
     private var columnHeadersView: some View {
         HStack(spacing: 0) {
-            // Clip Name Column
-            HStack(spacing: 0) {
-                Text("Clip Name")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: clipNameWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-                
-                ResizeDivider { delta in
-                    clipNameWidth = max(clipNameWidth + delta, minClipNameWidth)
-                }
-            }
-            
-            // Start TC Column
-            HStack(spacing: 0) {
-                Text("Start TC")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: startTCWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-                
-                ResizeDivider { delta in
-                    startTCWidth = max(startTCWidth + delta, minStartTCWidth)
-                }
-            }
-            
-            // End TC Column
-            HStack(spacing: 0) {
-                Text("End TC")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: endTCWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-                
-                ResizeDivider { delta in
-                    endTCWidth = max(endTCWidth + delta, minEndTCWidth)
-                }
-            }
-            
-            // Duration Column
-            HStack(spacing: 0) {
-                Text("Duration")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: durationWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-                
-                ResizeDivider { delta in
-                    durationWidth = max(durationWidth + delta, minDurationWidth)
-                }
-            }
-            
-            // Frames Column
-            HStack(spacing: 0) {
-                Text("Frames")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: framesWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-                
-                ResizeDivider { delta in
-                    framesWidth = max(framesWidth + delta, minFramesWidth)
-                }
-            }
-            
-            // Type Column
-            HStack(spacing: 0) {
-                Text("Type")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: typeWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-                
-                ResizeDivider { delta in
-                    typeWidth = max(typeWidth + delta, minTypeWidth)
-                }
-            }
-            
-            // Resolution Column
-            HStack(spacing: 0) {
-                Text("Resolution")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: resolutionWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-                
-                ResizeDivider { delta in
-                    resolutionWidth = max(resolutionWidth + delta, minResolutionWidth)
-                }
-            }
-            
-            // FPS Column
-            HStack(spacing: 0) {
-                Text("FPS")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .frame(width: fpsWidth, alignment: .leading)
-                    .padding(.horizontal, 4)
-
-                ResizeDivider { delta in
-                    fpsWidth = max(fpsWidth + delta, minFpsWidth)
-                }
-            }
-
-            // Status Column (only for segments)
-            if type == .segment {
-                HStack(spacing: 0) {
-                    Text("Status")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .frame(width: statusWidth, alignment: .leading)
-                        .padding(.horizontal, 4)
-
-                    ResizeDivider { delta in
-                        statusWidth = max(statusWidth + delta, minStatusWidth)
+            ForEach(columns, id: \.self) { column in
+                let (width, minimum) = dimensions(for: column)
+                Button {
+                    ascending = sortColumn == column ? !ascending : true
+                    sortColumn = column
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(column.rawValue)
+                        if sortColumn == column {
+                            Image(systemName: ascending ? "chevron.up" : "chevron.down")
+                        }
                     }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: width.wrappedValue - 5, height: 22, alignment: .leading)
+                    .padding(.leading, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                ResizeDivider { delta in
+                    width.wrappedValue = max(minimum, width.wrappedValue + delta)
                 }
             }
 
@@ -266,6 +234,7 @@ struct MediaFileColumnTableView: View {
     private var fileRowsView: some View {
         List(visibleFiles, id: \.url, selection: $selection) { file in
             MediaFileColumnRowView(
+                columns: columns,
                 file: file.toDisplayInfo(),
                 type: type,
                 isOffline: offlineFiles.contains(file.fileName),
@@ -339,80 +308,52 @@ struct ColumnWidths {
 
 // MARK: - ResizeDivider Component
 
-struct ResizeDivider: View {
+private struct ResizeDivider: NSViewRepresentable {
     let onDrag: (CGFloat) -> Void
-    @State private var isDragging = false
-    @State private var startLocation: CGPoint = .zero
-    @State private var isHovering = false
-    
-    var body: some View {
-        ZStack {
-            // Main separator line
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(width: 1, height: 16)
-            
-            // Drag handle icon - only visible on hover or drag
-            if isHovering || isDragging {
-                VStack(spacing: 1) {
-                    Rectangle()
-                        .fill(Color.secondary)
-                        .frame(width: 2, height: 3)
-                    Rectangle()
-                        .fill(Color.secondary)
-                        .frame(width: 2, height: 3)
-                    Rectangle()
-                        .fill(Color.secondary)
-                        .frame(width: 2, height: 3)
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                        .frame(width: 8, height: 12)
-                )
-            }
-        }
-        .overlay(
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: 20, height: 24) // Even wider hit target
-                .cursor(.resizeLeftRight)
-        )
-        .contentShape(Rectangle().size(width: 20, height: 24))
-        .onHover { hovering in
-            isHovering = hovering
-        }
-        .animation(.easeInOut(duration: 0.15), value: isHovering)
-        .gesture(
-            DragGesture(coordinateSpace: .local)
-                .onChanged { value in
-                    if !isDragging {
-                        isDragging = true
-                        startLocation = value.startLocation
-                    }
-                    let delta = value.translation.width
-                    onDrag(delta)
-                }
-                .onEnded { _ in
-                    isDragging = false
-                }
-        )
-    }
-}
 
-extension View {
-    func cursor(_ cursor: NSCursor) -> some View {
-        self.onHover { inside in
-            if inside {
-                cursor.push()
-            } else {
-                NSCursor.pop()
-            }
+    func makeNSView(context: Context) -> DividerView { DividerView() }
+
+    func updateNSView(_ view: DividerView, context: Context) {
+        view.onDrag = onDrag
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: DividerView, context: Context) -> CGSize? {
+        CGSize(width: 9, height: proposal.height ?? 22)
+    }
+
+    final class DividerView: NSView {
+        var onDrag: ((CGFloat) -> Void)?
+        private var lastX: CGFloat = 0
+
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.separatorColor.setFill()
+            NSRect(x: floor(bounds.midX), y: bounds.midY - 8, width: 1, height: 16).fill()
+        }
+
+        override func resetCursorRects() {
+            super.resetCursorRects()
+            addCursorRect(bounds, cursor: .resizeLeftRight)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            lastX = event.locationInWindow.x
+            NSCursor.resizeLeftRight.push()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            let x = event.locationInWindow.x
+            onDrag?(x - lastX)
+            lastX = x
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            NSCursor.pop()
         }
     }
 }
 
 struct MediaFileColumnRowView: View {
+    var columns: [MediaColumn] = MediaColumn.allCases
     let file: DisplayMediaInfo
     let type: MediaFileColumnTableView.MediaType
     let isOffline: Bool
@@ -454,9 +395,10 @@ struct MediaFileColumnRowView: View {
         return formatter.string(from: date)
     }
 
-    var body: some View {
-        HStack(spacing: 0) {
-            // Clip Name Column
+    @ViewBuilder
+    private func cell(_ column: MediaColumn) -> some View {
+        switch column {
+        case .clipName:
             HStack(spacing: 4) {
                 if isOffline {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -505,7 +447,7 @@ struct MediaFileColumnRowView: View {
             .frame(width: columnWidths.clipName, alignment: .leading)
             .padding(.horizontal, 4)
 
-            // Start TC Column
+        case .startTC:
             Text(file.sourceTimecode ?? "—")
                 .font(.system(size: 12))
                 .monospacedDigit()
@@ -514,7 +456,7 @@ struct MediaFileColumnRowView: View {
                 .frame(width: columnWidths.startTC, alignment: .leading)
                 .padding(.horizontal, 4)
             
-            // End TC Column
+        case .endTC:
             Text(file.endTimecode ?? "—")
                 .font(.system(size: 12))
                 .monospacedDigit()
@@ -523,7 +465,7 @@ struct MediaFileColumnRowView: View {
                 .frame(width: columnWidths.endTC, alignment: .leading)
                 .padding(.horizontal, 4)
             
-            // Duration Column
+        case .duration:
             Text(file.durationDisplay)
                 .font(.system(size: 12))
                 .monospacedDigit()
@@ -531,7 +473,7 @@ struct MediaFileColumnRowView: View {
                 .frame(width: columnWidths.duration, alignment: .leading)
                 .padding(.horizontal, 4)
 
-            // Frames Column
+        case .frames:
             Text(file.frameCountDisplay)
                 .font(.system(size: 12))
                 .monospacedDigit()
@@ -539,7 +481,7 @@ struct MediaFileColumnRowView: View {
                 .frame(width: columnWidths.frames, alignment: .leading)
                 .padding(.horizontal, 4)
             
-            // Type Column
+        case .type:
             Text(file.mediaTypeDisplay)
                 .font(.caption)
                 .lineLimit(1)
@@ -550,7 +492,7 @@ struct MediaFileColumnRowView: View {
                 .frame(width: columnWidths.type, alignment: .leading)
                 .padding(.horizontal, 4)
             
-            // Resolution Column
+        case .resolution:
             Text(file.resolutionDisplay)
                 .font(.system(size: 12))
                 .monospacedDigit()
@@ -558,7 +500,7 @@ struct MediaFileColumnRowView: View {
                 .frame(width: columnWidths.resolution, alignment: .leading)
                 .padding(.horizontal, 4)
             
-            // FPS Column
+        case .fps:
             Text(String(format: "%.3f", file.frameRateValue))
                 .font(.system(size: 12))
                 .monospacedDigit()
@@ -567,11 +509,19 @@ struct MediaFileColumnRowView: View {
                 .frame(width: columnWidths.fps, alignment: .leading)
                 .padding(.horizontal, 4)
 
-            // Status Column (only for segments)
+        case .status:
             if type == .segment {
                 statusView
                     .frame(width: columnWidths.status, alignment: .leading)
                     .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(columns, id: \.self) { column in
+                cell(column)
             }
 
             // Filler Column (expands to fill remaining space)
