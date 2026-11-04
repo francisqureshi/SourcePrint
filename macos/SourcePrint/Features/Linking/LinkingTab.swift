@@ -11,7 +11,7 @@ import SourcePrintCore
 struct LinkingTab: View {
     let project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
-    @EnvironmentObject var statusBarVM: StatusBarViewModel
+    @Environment(StatusBarViewModel.self) private var statusBarVM
     @State private var isLinking = false
     @State private var timelineVisualizationData: [String: TimelineVisualization] = [:]
     @State private var blankRushTask: Task<Void, Never>? = nil

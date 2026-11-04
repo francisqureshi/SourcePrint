@@ -13,7 +13,7 @@ import CoreMedia
 struct CompressorStyleOCFCard: View {
     let parent: OCFParent
     let ocfIndex: Int
-    let project: ProjectViewModel
+    @ObservedObject var project: ProjectViewModel
     let timelineVisualizationData: [String: TimelineVisualization]
     @Binding var selectedLinkedFiles: Set<String>
     @Binding var selectedOCFParents: Set<String>
@@ -22,18 +22,11 @@ struct CompressorStyleOCFCard: View {
     let projectManager: ProjectManager
     let getSelectedParents: () -> [OCFParent]
     let allParents: [OCFParent]
-    let currentlyRenderingOCF: String?  // Global lock to prevent concurrent rendering
-    let renderProgress: String?  // Current render progress message
-    let renderSegmentProgress: SourcePrintCore.SegmentProgress?  // Current segment progress
-    let onRenderSingle: () -> Void  // Callback to render just this OCF
+    let isRendering: Bool
+    let renderQueueManager: RenderQueueManager
+    let onRenderSingle: () -> Void
 
-
-    @State private var isExpanded: Bool = true  // Default to expanded
-
-    // Render state is now managed by RenderQueueManager in parent view
-    private var isRendering: Bool {
-        currentlyRenderingOCF == parent.ocf.fileName
-    }
+    private var isExpanded: Bool { project.ocfCardExpansionState[parent.ocf.fileName] ?? true }
 
     private var isSelected: Bool {
         selectedOCFParents.contains(parent.ocf.fileName)
@@ -83,45 +76,6 @@ struct CompressorStyleOCFCard: View {
     // Render logic moved to RenderService in SourcePrintCore
     // Card now just triggers rendering via notification, actual work done by RenderQueueManager
 
-    /// Extract percentage from progress message like "Creating blank rush... 45% @ 180 fps"
-    private func extractPercentage(from progress: String) -> Double? {
-        // Look for pattern like "45%"
-        let pattern = #"(\d+)%"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: progress, range: NSRange(progress.startIndex..., in: progress)),
-              let percentRange = Range(match.range(at: 1), in: progress) else {
-            return nil
-        }
-
-        let percentString = String(progress[percentRange])
-        return Double(percentString)
-    }
-
-    /// Progress bar view with segment-based or percentage-based progress
-    private var progressBarView: some View {
-        Group {
-            if let segmentProgress = renderSegmentProgress {
-                // Use segment progress (e.g., 18/41 = 43.9%)
-                ProgressView(value: Double(segmentProgress.current), total: Double(segmentProgress.total))
-                    .progressViewStyle(.linear)
-                    .tint(AppTheme.success)
-                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
-            } else if let progress = renderProgress, let percentage = extractPercentage(from: progress) {
-                // Fallback: Extract percentage for determinate progress bar
-                ProgressView(value: percentage, total: 100.0)
-                    .progressViewStyle(.linear)
-                    .tint(AppTheme.success)
-                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
-            } else {
-                // Indeterminate progress bar (composition phase)
-                ProgressView()
-                    .progressViewStyle(.linear)
-                    .tint(AppTheme.success)
-                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
-            }
-        }
-    }
-
     var body: some View {
         cardContent
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -130,33 +84,6 @@ struct CompressorStyleOCFCard: View {
                     .stroke(Color.accentColor, lineWidth: 2)
                     .opacity(isSelected ? 1 : 0)
             )
-            .onReceive(NotificationCenter.default.publisher(for: .expandSelectedCards)) { _ in
-                if isSelected {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded = true
-                    }
-                    project.ocfCardExpansionState[parent.ocf.fileName] = true
-                    projectManager.saveProject(project)
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .collapseSelectedCards)) { _ in
-                if isSelected {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded = false
-                    }
-                    project.ocfCardExpansionState[parent.ocf.fileName] = false
-                    projectManager.saveProject(project)
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .collapseAllCards)) { _ in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded = false
-                }
-                project.ocfCardExpansionState[parent.ocf.fileName] = false
-            }
-            .onAppear {
-                isExpanded = project.ocfCardExpansionState[parent.ocf.fileName] ?? true
-            }
     }
 
     @ViewBuilder
@@ -165,13 +92,12 @@ struct CompressorStyleOCFCard: View {
             // Compressor-style header (title bar)
             OCFCardHeader(
                 fileName: parent.ocf.fileName,
-                isExpanded: $isExpanded,
+                isExpanded: Binding(get: { isExpanded }, set: { project.ocfCardExpansionState[parent.ocf.fileName] = $0 }),
                 isSelected: isSelected,
                 isRendering: isRendering,
                 project: project,
                 projectManager: projectManager,
                 onExpansionToggle: {
-                    project.ocfCardExpansionState[parent.ocf.fileName] = isExpanded
                     projectManager.saveProject(project)
                 },
                 onRenderSingle: onRenderSingle,
@@ -179,37 +105,8 @@ struct CompressorStyleOCFCard: View {
             )
 
             // Render Progress Bar
-            if isRendering, let progress = renderProgress {
-                VStack(spacing: 4) {
-                    progressBarView
-
-                    // Split progress message to show FPS on the right
-                    HStack {
-                        if let separatorIndex = progress.range(of: " @ ")?.lowerBound {
-                            // Has FPS info - split it
-                            let statusPart = String(progress[..<separatorIndex])
-                            let fpsPart = String(progress[progress.index(after: separatorIndex)...])
-
-                            Text(statusPart)
-                                .font(.caption2)
-                                .foregroundColor(.primary)
-                            Spacer()
-                            Text(fpsPart)
-                                .font(.caption2)
-                                .foregroundColor(.primary.opacity(0.85))
-                                .monospacedDigit()
-                        } else {
-                            // No FPS info - just show status
-                            Text(progress)
-                                .font(.caption2)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.appBackgroundSecondary)
+            if isRendering {
+                ActiveRenderProgress(queue: renderQueueManager)
             }
 
             // Card body (expandable content)
@@ -239,8 +136,8 @@ struct CompressorStyleOCFCard: View {
 
                 // Render Log Section
                 RenderLogSection(
-                    project: project,
-                    ocfFileName: parent.ocf.fileName
+                    blankRushStatus: project.model.blankRushStatus[parent.ocf.fileName] ?? .notCreated,
+                    mostRecentPrint: project.latestPrintByOCF[parent.ocf.fileName]
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -268,10 +165,11 @@ struct CompressorStyleOCFCard: View {
     private var segmentsListView: some View {
         GroupBox {
             VStack(spacing: 0) {
-                ForEach(Array(sortedByTimecode(parent.children).enumerated()), id: \.element.segment.fileName) { index, linkedSegment in
+                let segments = sortedByTimecode(parent.children)
+                ForEach(Array(segments.enumerated()), id: \.element.segment.fileName) { index, linkedSegment in
                     TreeLinkedSegmentRowView(
                         linkedSegment: linkedSegment,
-                        isLast: linkedSegment.segment.fileName == sortedByTimecode(parent.children).last?.segment.fileName,
+                        isLast: index == segments.count - 1,
                         ocfFileName: parent.ocf.fileName,
                         project: project,
                         onUnlink: {
@@ -301,7 +199,85 @@ struct CompressorStyleOCFCard: View {
     }
 }
 
-// MARK: - OCF Card Header Component
+// MARK: - Active Render Progress
+
+private struct ActiveRenderProgress: View {
+    @ObservedObject var queue: RenderQueueManager
+
+    /// Extract percentage from progress message like "Creating blank rush... 45% @ 180 fps"
+    private func extractPercentage(from progress: String) -> Double? {
+        // Look for pattern like "45%"
+        let pattern = #"(\d+)%"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: progress, range: NSRange(progress.startIndex..., in: progress)),
+              let percentRange = Range(match.range(at: 1), in: progress) else {
+            return nil
+        }
+
+        let percentString = String(progress[percentRange])
+        return Double(percentString)
+    }
+
+    /// Progress bar view with segment-based or percentage-based progress
+    private var progressBarView: some View {
+        Group {
+            if let segmentProgress = queue.currentSegmentProgress {
+                // Use segment progress (e.g., 18/41 = 43.9%)
+                ProgressView(value: Double(segmentProgress.current), total: Double(segmentProgress.total))
+                    .progressViewStyle(.linear)
+                    .tint(AppTheme.success)
+                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
+            } else if let progress = queue.currentItem?.progress, let percentage = extractPercentage(from: progress) {
+                // Fallback: Extract percentage for determinate progress bar
+                ProgressView(value: percentage, total: 100.0)
+                    .progressViewStyle(.linear)
+                    .tint(AppTheme.success)
+                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
+            } else {
+                // Indeterminate progress bar (composition phase)
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(AppTheme.success)
+                    .scaleEffect(x: 1, y: 0.5, anchor: .center)
+            }
+        }
+    }
+
+    var body: some View {
+        if let progress = queue.currentItem?.progress {
+            VStack(spacing: 4) {
+                progressBarView
+
+                // Split progress message to show FPS on the right
+                HStack {
+                    if let separatorIndex = progress.range(of: " @ ")?.lowerBound {
+                        // Has FPS info - split it
+                        let statusPart = String(progress[..<separatorIndex])
+                        let fpsPart = String(progress[progress.index(after: separatorIndex)...])
+
+                        Text(statusPart)
+                            .font(.caption2)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Text(fpsPart)
+                            .font(.caption2)
+                            .foregroundColor(.primary.opacity(0.85))
+                            .monospacedDigit()
+                    } else {
+                        // No FPS info - just show status
+                        Text(progress)
+                            .font(.caption2)
+                            .foregroundColor(.primary)
+                        Spacer()
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.appBackgroundSecondary)
+        }
+    }
+}
 
 struct OCFCardHeader: View {
     let fileName: String

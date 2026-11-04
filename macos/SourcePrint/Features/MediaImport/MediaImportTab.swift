@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 struct MediaImportTab: View {
     @ObservedObject var project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
-    @EnvironmentObject var statusBarVM: StatusBarViewModel
+    @Environment(StatusBarViewModel.self) private var statusBarVM
     @Binding var selectedTab: ProjectTab
     @State private var importingOCF = false
     @State private var isAnalyzing = false

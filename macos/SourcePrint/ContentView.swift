@@ -10,7 +10,7 @@ import SourcePrintCore
 
 struct ContentView: View {
     @EnvironmentObject var projectManager: ProjectManager
-    @StateObject private var statusBarVM = StatusBarViewModel()
+    @State private var statusBarVM = StatusBarViewModel()
     @State private var showingNewProject = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
 
@@ -24,7 +24,7 @@ struct ContentView: View {
                 if let currentProject = projectManager.currentProject {
                     ProjectDetailView(project: currentProject)
                         .environmentObject(projectManager)
-                        .environmentObject(statusBarVM)
+                        .environment(statusBarVM)
                 } else {
                     WelcomeView()
                         .environmentObject(projectManager)

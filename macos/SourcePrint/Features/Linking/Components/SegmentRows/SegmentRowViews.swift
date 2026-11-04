@@ -28,24 +28,24 @@ struct TreeLinkedSegmentRowView: View {
         project.model.offlineMediaFiles.contains(linkedSegment.segment.fileName)
     }
 
-    // Returns the file modification date if this segment was modified after last print, nil otherwise
-    private var modifiedFileDate: Date? {
-        let lastPrintDate: Date?
+    @State private var modifiedFileDate: Date?
+
+    private struct ModificationCheck: Equatable {
+        let url: URL
+        let printDate: Date?
+        let trackedDate: Date?
+        let isOffline: Bool
+    }
+
+    private var modificationCheck: ModificationCheck {
+        let printDate: Date?
         switch project.model.printStatus[ocfFileName] {
-        case .printed(let date, _):
-            lastPrintDate = date
-        case .needsReprint(let date, _):
-            lastPrintDate = date
-        case .notPrinted, nil:
-            return nil
+        case .printed(let date, _), .needsReprint(let date, _): printDate = date
+        default: printDate = nil
         }
-        guard let printDate = lastPrintDate else { return nil }
-        let attrs = try? FileManager.default.attributesOfItem(
-            atPath: linkedSegment.segment.url.path)
-        if let fileModDate = attrs?[.modificationDate] as? Date, fileModDate > printDate {
-            return fileModDate
-        }
-        return nil
+        return ModificationCheck(url: linkedSegment.segment.url, printDate: printDate,
+                                 trackedDate: project.model.segmentModificationDates[linkedSegment.segment.fileName],
+                                 isOffline: isOffline)
     }
 
     private static let modifiedDateFormatter: DateFormatter = {
@@ -194,6 +194,16 @@ struct TreeLinkedSegmentRowView: View {
             }
         }
         .opacity(isOffline ? 0.6 : 1.0)
+        .task(id: modificationCheck) {
+            let check = modificationCheck
+            modifiedFileDate = nil
+            guard let printDate = check.printDate, !check.isOffline else { return }
+            let date = await Task.detached(priority: .utility) {
+                try? FileSystemOperations.getModificationDate(for: check.url).get()
+            }.value
+            guard !Task.isCancelled, let date, date > printDate else { return }
+            modifiedFileDate = date
+        }
     }
 
 }

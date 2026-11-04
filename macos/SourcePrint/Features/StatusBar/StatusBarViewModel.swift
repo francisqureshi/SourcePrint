@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
 /// Types of operations that can show progress in the status bar
 enum OperationType: Equatable {
@@ -38,44 +38,45 @@ struct DetailedProgress {
 
 /// Observable ViewModel for the status bar - aggregates progress from all operations
 @MainActor
-class StatusBarViewModel: ObservableObject {
+@Observable
+final class StatusBarViewModel {
 
     // MARK: - Published Properties
 
     /// Current operation type
-    @Published var currentOperation: OperationType = .idle
+    var currentOperation: OperationType = .idle
 
     /// Main status text (e.g., "Rendering 3 of 12 items")
-    @Published var statusText: String = "Ready"
+    var statusText: String = "Ready"
 
     /// Progress value (0.0 to 1.0)
-    @Published var progressValue: Double = 0.0
+    var progressValue: Double = 0.0
 
     /// Whether progress is indeterminate (shows spinner instead of bar)
-    @Published var isIndeterminate: Bool = false
+    var isIndeterminate: Bool = false
 
     /// Detailed information for expanded view
-    @Published var detailedInfo: DetailedProgress? = nil
+    var detailedInfo: DetailedProgress? = nil
 
     /// Whether the status bar is expanded
-    @Published var isExpanded: Bool = false
+    var isExpanded: Bool = false
 
     /// Last completed operation (for idle state)
-    @Published var lastCompletedOperation: String? = nil
+    var lastCompletedOperation: String? = nil
 
     /// Timestamp of last completed operation
-    @Published var lastCompletedTime: Date? = nil
+    var lastCompletedTime: Date? = nil
 
     // MARK: - Render Button State
 
     /// Number of selected OCF parents for rendering
-    @Published var selectedRenderCount: Int = 0
+    var selectedRenderCount: Int = 0
 
     /// Total available OCF parents for rendering
-    @Published var totalRenderableCount: Int = 0
+    var totalRenderableCount: Int = 0
 
     /// Number of modified OCFs that need re-rendering
-    @Published var modifiedRenderCount: Int = 0
+    var modifiedRenderCount: Int = 0
 
     /// Callbacks for render actions
     var onRenderSelected: (() -> Void)?
@@ -88,7 +89,7 @@ class StatusBarViewModel: ObservableObject {
     // MARK: - Tab Context
 
     /// Current active tab
-    @Published var currentTab: TabContext = .overview
+    var currentTab: TabContext = .overview
 
     // MARK: - Link Button State
 
@@ -96,10 +97,10 @@ class StatusBarViewModel: ObservableObject {
     var onLinkFiles: (() -> Void)?
 
     /// Number of OCF files available for linking
-    @Published var ocfFileCount: Int = 0
+    var ocfFileCount: Int = 0
 
     /// Number of segment files available for linking
-    @Published var segmentFileCount: Int = 0
+    var segmentFileCount: Int = 0
 
     // MARK: - Progress Update Methods
 

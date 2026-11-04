@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct StatusBarView: View {
-    @ObservedObject var viewModel: StatusBarViewModel
+    let viewModel: StatusBarViewModel
 
     // Themed green for progress bars
     private let accentColor = AppTheme.success
