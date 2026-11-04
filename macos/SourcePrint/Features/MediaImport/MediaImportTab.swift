@@ -16,8 +16,6 @@ struct MediaImportTab: View {
     @Binding var selectedTab: ProjectTab
     @State private var importingOCF = false
     @State private var isAnalyzing = false
-    @State private var selectedOCFFiles: Set<String> = []
-    @State private var selectedSegments: Set<String> = []
     @State private var showRemoveOfflineConfirmation = false
     
     @State private var confirmDuplicateCleanup = false
@@ -82,16 +80,12 @@ struct MediaImportTab: View {
                 MediaFileColumnTableView(
                     files: project.model.ocfFiles,
                     type: .ocf,
-                    selectedFiles: $selectedOCFFiles,
                     offlineFiles: project.model.offlineMediaFiles,
                     modificationDates: [:], // OCFs don't track modification dates
-                    onVFXToggle: { fileName, isVFX in
-                        project.toggleOCFVFXStatus(fileName, isVFX: isVFX)
+                    onVFXToggle: nil,
+                    onRemoveFiles: { urls in
+                        project.removeOCFFiles(urls)
                         projectManager.saveProject(project)
-                    },
-                    onRemoveFiles: { fileNames in
-                        removeOCFFiles(fileNames)
-                        selectedOCFFiles.removeAll()
                     },
                     onImportAction: {
                         importingOCF = true
@@ -105,16 +99,15 @@ struct MediaImportTab: View {
                 MediaFileColumnTableView(
                     files: project.model.segments,
                     type: .segment,
-                    selectedFiles: $selectedSegments,
                     offlineFiles: project.model.offlineMediaFiles,
                     modificationDates: project.model.segmentModificationDates,
-                    onVFXToggle: { fileName, isVFX in
-                        project.toggleSegmentVFXStatus(fileName, isVFX: isVFX)
+                    onVFXToggle: { url, isVFX in
+                        project.toggleSegmentVFXStatus(url, isVFX: isVFX)
                         projectManager.saveProject(project)
                     },
-                    onRemoveFiles: { fileNames in
-                        removeSegments(fileNames)
-                        selectedSegments.removeAll()
+                    onRemoveFiles: { urls in
+                        project.removeSegments(urls)
+                        projectManager.saveProject(project)
                     },
                     onImportAction: {
                         importingOCF = false
@@ -346,34 +339,6 @@ struct MediaImportTab: View {
         }
     }
     
-    // MARK: - File Removal Methods
-    
-    private func removeSelectedOCFFiles() {
-        guard !selectedOCFFiles.isEmpty else { return }
-        let fileNames = Array(selectedOCFFiles)
-        removeOCFFiles(fileNames)
-        selectedOCFFiles.removeAll()
-    }
-    
-    private func removeSelectedSegments() {
-        guard !selectedSegments.isEmpty else { return }
-        let fileNames = Array(selectedSegments)
-        removeSegments(fileNames)
-        selectedSegments.removeAll()
-    }
-    
-    private func removeOCFFiles(_ fileNames: [String]) {
-        project.removeOCFFiles(fileNames)
-        projectManager.saveProject(project)
-        NSLog("🗑️ Removed \(fileNames.count) OCF file(s): \(fileNames.joined(separator: ", "))")
-    }
-    
-    private func removeSegments(_ fileNames: [String]) {
-        project.removeSegments(fileNames)
-        projectManager.saveProject(project)
-        NSLog("🗑️ Removed \(fileNames.count) segment(s): \(fileNames.joined(separator: ", "))")
-    }
-
     private func updateStatusBarCounts() {
         statusBarVM.ocfFileCount = project.model.ocfFiles.count
         statusBarVM.segmentFileCount = project.model.segments.count

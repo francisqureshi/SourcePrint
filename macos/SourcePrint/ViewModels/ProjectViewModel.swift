@@ -247,41 +247,28 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
         checkForModifiedSegmentsAndUpdatePrintStatus()
     }
 
-    /// Remove OCF files by filename
-    func removeOCFFiles(_ fileNames: [String]) {
-        // Convert blank rush status to strings for service
-        let blankRushStatusStrings = model.blankRushStatus.mapValues { _ in "status" }
-
-        let result = ProjectOperations.removeOCFFiles(
-            fileNames,
-            existingOCFs: model.ocfFiles,
-            existingBlankRushStatus: blankRushStatusStrings
-        )
-
-        applyOperationResult(result)
-
-        // Invalidate linking if needed
-        if result.shouldInvalidateLinking {
-            model.linkingResult = nil
+    func removeOCFFiles(_ urls: Set<URL>) {
+        let removedNames = Set(model.ocfFiles.filter { urls.contains($0.url) }.map(\.fileName))
+        model.ocfFiles.removeAll { urls.contains($0.url) }
+        for name in removedNames.subtracting(model.ocfFiles.map(\.fileName)) {
+            model.blankRushStatus.removeValue(forKey: name)
         }
+        model.linkingResult = nil
+        model.updateModified()
     }
 
-    /// Remove segments by filename
-    func removeSegments(_ fileNames: [String]) {
-        let result = ProjectOperations.removeSegments(
-            fileNames,
-            existingSegments: model.segments,
-            existingModDates: model.segmentModificationDates,
-            existingFileSizes: model.segmentFileSizes,
-            existingOfflineFiles: model.offlineMediaFiles
-        )
-
-        applyOperationResult(result)
-
-        // Invalidate linking if needed
-        if result.shouldInvalidateLinking {
-            model.linkingResult = nil
+    func removeSegments(_ urls: Set<URL>) {
+        let removedNames = Set(model.segments.filter { urls.contains($0.url) }.map(\.fileName))
+        model.segments.removeAll { urls.contains($0.url) }
+        for name in removedNames.subtracting(model.segments.map(\.fileName)) {
+            model.segmentModificationDates.removeValue(forKey: name)
+            model.segmentFileSizes.removeValue(forKey: name)
+            if !model.ocfFiles.contains(where: { $0.fileName == name }) {
+                model.offlineMediaFiles.remove(name)
+            }
         }
+        model.linkingResult = nil
+        model.updateModified()
     }
 
     /// Remove all offline media files from the project
@@ -320,13 +307,10 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     }
 
     /// Toggle VFX status for segment file
-    func toggleSegmentVFXStatus(_ fileName: String, isVFX: Bool) {
-        let result = ProjectOperations.toggleSegmentVFXStatus(
-            fileName,
-            isVFX: isVFX,
-            existingSegments: model.segments
-        )
-        applyOperationResult(result)
+    func toggleSegmentVFXStatus(_ url: URL, isVFX: Bool) {
+        guard let index = model.segments.firstIndex(where: { $0.url == url }) else { return }
+        model.segments[index].isVFXShot = isVFX
+        model.updateModified()
     }
 
     /// Apply ProjectOperationResult to model
