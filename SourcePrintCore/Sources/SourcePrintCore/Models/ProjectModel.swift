@@ -240,6 +240,10 @@ public enum BlankRushStatus: Codable, Equatable {
 // MARK: - PrintRecord
 
 public struct PrintRecord: Codable, Identifiable {
+    public let batch: RenderBatch?
+    public let errorMessage: String?
+    public let cancelled: Bool?
+    public let outputFingerprint: RenderOutputFingerprint?
     public let id: UUID
     public let date: Date
     public let ocfURL: URL?
@@ -249,7 +253,11 @@ public struct PrintRecord: Codable, Identifiable {
     public let duration: TimeInterval
     public let success: Bool
 
-    public init(id: UUID = UUID(), date: Date, ocfFileName: String, ocfURL: URL? = nil, outputURL: URL, segmentCount: Int = 0, duration: TimeInterval, success: Bool = true) {
+    public init(id: UUID = UUID(), date: Date, ocfFileName: String, ocfURL: URL? = nil, outputURL: URL, segmentCount: Int = 0, duration: TimeInterval, success: Bool = true, errorMessage: String? = nil, cancelled: Bool? = nil, outputFingerprint: RenderOutputFingerprint? = nil, batch: RenderBatch? = nil) {
+        self.batch = batch
+        self.errorMessage = errorMessage
+        self.cancelled = cancelled
+        self.outputFingerprint = outputFingerprint
         self.id = id
         self.date = date
         self.ocfURL = ocfURL

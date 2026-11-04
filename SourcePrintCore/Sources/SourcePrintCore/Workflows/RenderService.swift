@@ -40,16 +40,17 @@ public class RenderService {
         // Step 1: Check/generate blank rush
         let blankRushResult = await ensureBlankRush(for: parent)
 
-        guard blankRushResult.success, let blankRushURL = blankRushResult.url else {
+        guard !Task.isCancelled, blankRushResult.success, let blankRushURL = blankRushResult.url else {
             let duration = Date().timeIntervalSince(startTime)
             return RenderResult(
                 ocfFileName: parent.ocf.fileName,
                 ocfURL: parent.ocf.url,
                 success: false,
                 outputURL: nil,
-                error: blankRushResult.error ?? "Failed to create blank rush",
+                error: Task.isCancelled ? "Render cancelled" : blankRushResult.error ?? "Failed to create blank rush",
                 duration: duration,
-                segmentCount: parent.children.count
+                segmentCount: parent.children.count,
+                cancelled: Task.isCancelled
             )
         }
 
@@ -64,12 +65,15 @@ public class RenderService {
         return RenderResult(
             ocfFileName: parent.ocf.fileName,
             ocfURL: parent.ocf.url,
-            success: compositionResult.success,
+            success: compositionResult.success && !Task.isCancelled,
             outputURL: compositionResult.url,
-            error: compositionResult.error,
+            error: Task.isCancelled ? "Render cancelled" : compositionResult.error,
             duration: totalDuration,
             segmentCount: parent.children.count,
-            blankRushURL: blankRushURL
+            blankRushURL: blankRushURL,
+            cancelled: Task.isCancelled,
+            outputFingerprint: compositionResult.success && !Task.isCancelled
+                ? compositionResult.url.flatMap { RenderOutputFingerprint.capture(at: $0) } : nil
         )
     }
 

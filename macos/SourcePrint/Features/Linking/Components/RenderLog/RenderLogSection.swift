@@ -73,16 +73,16 @@ struct RenderLogSection: View {
                     if let print = mostRecentPrint {
                         VStack(alignment: .trailing, spacing: 2) {
                             HStack(spacing: 6) {
-                                Text(print.success ? "Completed" : "Failed")
+                                Text(print.cancelled == true ? "Cancelled" : print.success ? "Completed" : "Failed")
                                     .font(.caption)
-                                    .foregroundColor(print.success ? .green : .red)
+                                    .foregroundColor(print.cancelled == true ? .orange : print.success ? .green : .red)
 
                                 Text(renderLogDateFormatter.string(from: print.date))
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
 
-                            Text(String(format: "%d segments printed in %.1fs", print.segmentCount, print.duration))
+                            Text(String(format: "%d segments · Render time %.1fs", print.segmentCount, print.duration))
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                                 .monospacedDigit()
