@@ -182,6 +182,14 @@ public struct ProjectModel: Codable, Identifiable {
         ocfFiles = try container.decode([MediaFileInfo].self, forKey: .ocfFiles)
         segments = try container.decode([MediaFileInfo].self, forKey: .segments)
         linkingResult = try container.decodeIfPresent(LinkingResult.self, forKey: .linkingResult)
+        // Old projects can cache the same render work more than once. Require a fresh link.
+        if let result = linkingResult {
+            let children = result.ocfParents.flatMap { $0.children.map { $0.segment } }
+            if ProjectOperations.uniqueMediaFiles(children).count != children.count ||
+                ProjectOperations.uniqueMediaFiles(result.ocfParents.map(\.ocf)).count != result.ocfParents.count {
+                linkingResult = nil
+            }
+        }
         blankRushStatus = try container.decode([String: BlankRushStatus].self, forKey: .blankRushStatus)
         segmentModificationDates = try container.decode([String: Date].self, forKey: .segmentModificationDates)
         segmentFileSizes = try container.decode([String: Int64].self, forKey: .segmentFileSizes)

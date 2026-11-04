@@ -62,17 +62,22 @@ public class ProjectOperations {
 
     // MARK: - Add Operations
 
+    /// Keep the first reference to each file, preserving import order and its metadata.
+    public static func uniqueMediaFiles(_ files: [MediaFileInfo], excluding existing: [MediaFileInfo] = []) -> [MediaFileInfo] {
+        var paths = Set(existing.map { $0.url.standardizedFileURL.path })
+        return files.filter { paths.insert($0.url.standardizedFileURL.path).inserted }
+    }
+
     /// Add OCF files to project
     public static func addOCFFiles(
         _ newFiles: [MediaFileInfo],
         existingOCFs: [MediaFileInfo]
     ) -> ProjectOperationResult {
-        var updated = existingOCFs
-        updated.append(contentsOf: newFiles)
+        let additions = uniqueMediaFiles(newFiles, excluding: existingOCFs)
 
         return ProjectOperationResult(
-            ocfFiles: updated,
-            shouldUpdateModified: true
+            ocfFiles: existingOCFs + additions,
+            shouldUpdateModified: !additions.isEmpty
         )
     }
 
@@ -82,13 +87,12 @@ public class ProjectOperations {
         existingSegments: [MediaFileInfo],
         existingFileSizes: [String: Int64]
     ) -> ProjectOperationResult {
-        var updated = existingSegments
-        updated.append(contentsOf: newSegments)
+        let additions = uniqueMediaFiles(newSegments, excluding: existingSegments)
 
         var updatedSizes = existingFileSizes
 
         // Track file sizes for new segments
-        for segment in newSegments {
+        for segment in additions {
             if case .success(let fileSize) = FileSystemOperations.getFileSize(for: segment.url) {
                 updatedSizes[segment.fileName] = fileSize
                 NSLog("📊 Stored size for segment: %@ (size: %lld bytes)", segment.fileName, fileSize)
@@ -96,9 +100,9 @@ public class ProjectOperations {
         }
 
         return ProjectOperationResult(
-            segments: updated,
+            segments: existingSegments + additions,
             segmentFileSizes: updatedSizes,
-            shouldUpdateModified: true
+            shouldUpdateModified: !additions.isEmpty
         )
     }
 

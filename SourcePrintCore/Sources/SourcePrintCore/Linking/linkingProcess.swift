@@ -83,7 +83,8 @@ public class SegmentOCFLinker {
     
     public init() {}
     
-    public func linkSegments(_ segments: [MediaFileInfo], withOCFParents ocfs: [MediaFileInfo], manualOverrides: [String: String] = [:]) -> LinkingResult {
+    public func linkSegments(_ segments: [MediaFileInfo], withOCFParents importedOCFs: [MediaFileInfo], manualOverrides: [String: String] = [:]) -> LinkingResult {
+        let ocfs = ProjectOperations.uniqueMediaFiles(importedOCFs)
         print("🔗 Linking \(segments.count) segments with \(ocfs.count) OCF parent files...")
         if !manualOverrides.isEmpty {
             print("  📌 Using \(manualOverrides.count) manual link override(s)")
@@ -92,7 +93,6 @@ public class SegmentOCFLinker {
         // Dictionary to group children by OCF parent (using full path as unique key)
         var ocfToChildren: [String: [LinkedSegment]] = [:]
         var unmatchedSegments: [MediaFileInfo] = []
-        var usedOCFs: Set<String> = []
 
         // Initialize dictionary with empty arrays for all OCFs (using full path as key)
         for ocf in ocfs {
@@ -100,7 +100,7 @@ public class SegmentOCFLinker {
         }
 
         // Link each segment to its best parent OCF
-        for segment in segments {
+        for segment in ProjectOperations.uniqueMediaFiles(segments) {
             // Check for manual override first
             if let manualOCFName = manualOverrides[segment.fileName],
                let manualOCF = ocfs.first(where: { $0.fileName == manualOCFName }) {
@@ -112,7 +112,6 @@ public class SegmentOCFLinker {
                 )
 
                 ocfToChildren[manualOCF.url.path]?.append(linkedSegment)
-                usedOCFs.insert(manualOCF.fileName)
 
                 print("  📌 \(segment.fileName) → \(manualOCF.fileName) (manual override)")
             } else if let (matchedOCF, confidence, method) = findBestMatch(for: segment, in: ocfs) {
@@ -123,7 +122,6 @@ public class SegmentOCFLinker {
                 )
                 
                 ocfToChildren[matchedOCF.url.path]?.append(linkedSegment)
-                usedOCFs.insert(matchedOCF.fileName)
                 
                 print("  ✅ \(segment.fileName) → \(matchedOCF.fileName) (\(confidence), \(method))")
             } else {
@@ -141,7 +139,7 @@ public class SegmentOCFLinker {
         }
         
         // Calculate which OCF files were never used
-        let unmatchedOCFs = ocfs.filter { !usedOCFs.contains($0.fileName) }
+        let unmatchedOCFs = ocfParents.filter { !$0.hasChildren }.map(\.ocf)
         
         let result = LinkingResult(
             ocfParents: ocfParents,

@@ -65,6 +65,7 @@ struct LinkingResultsView: View {
     @State private var selectedUnmatchedFiles: Set<String> = []
     @State private var selectedOCFParents: Set<String> = []
     @State private var showUnmatchedDrawer = true
+    @State private var unmatchedSearch = ""
     @State private var searchText: String = ""
 
     // Unified navigation state
@@ -96,7 +97,8 @@ struct LinkingResultsView: View {
             return confidentlyLinkedParents
         } else {
             return confidentlyLinkedParents.filter { parent in
-                parent.ocf.fileName.localizedCaseInsensitiveContains(searchText)
+                parent.ocf.fileName.localizedCaseInsensitiveContains(searchText) ||
+                    parent.children.contains { $0.segment.fileName.localizedCaseInsensitiveContains(searchText) }
             }
         }
     }
@@ -400,7 +402,7 @@ struct LinkingResultsView: View {
                 // Check if Command key is pressed
                 if press.modifiers.contains(.command) {
                     // Select all OCF parents
-                    selectedOCFParents = Set(confidentlyLinkedParents.map { $0.ocf.fileName })
+                    selectedOCFParents = Set(filteredConfidentlyLinkedParents.map { $0.ocf.fileName })
                     selectedLinkedFiles.removeAll()
                     selectedUnmatchedFiles.removeAll()
                     navigationContext = .ocfList
@@ -649,7 +651,7 @@ struct LinkingResultsView: View {
                         .foregroundColor(.secondary)
                         .font(.system(size: 14))
 
-                    TextField("Search OCF files...", text: $searchText)
+                    TextField("Search OCF or segment names…", text: $searchText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
 
@@ -783,14 +785,19 @@ struct LinkingResultsView: View {
                     }
                     .padding()
 
+                    TextField("Search unmatched items", text: $unmatchedSearch)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal)
+
+                    let segments = (linkingResult?.unmatchedSegments ?? []).filter { matchesUnmatchedSearch($0) }
+                    let ocfs = (linkingResult?.unmatchedOCFs ?? []).filter { matchesUnmatchedSearch($0) }
+                    let lowConfidence = lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }
                     List(selection: $selectedUnmatchedFiles) {
                         // Unmatched Segments (shown first - most important)
-                        if let linkingResult = linkingResult,
-                            !linkingResult.unmatchedSegments.isEmpty
-                        {
-                            Section("Unmatched Segments (\(linkingResult.unmatchedSegments.count))")
+                        if !segments.isEmpty {
+                            Section("Unmatched Segments (\(segments.count))")
                             {
-                                ForEach(linkingResult.unmatchedSegments, id: \.fileName) {
+                                ForEach(segments, id: \.fileName) {
                                     segment in
                                     UnmatchedFileRowView(file: segment, type: .segment)
                                         .tag(segment.fileName)
@@ -799,16 +806,16 @@ struct LinkingResultsView: View {
                         }
 
                         // Unmatched OCF Files
-                        if let linkingResult = linkingResult, !linkingResult.unmatchedOCFs.isEmpty {
+                        if !ocfs.isEmpty {
                             Section {
-                                ForEach(linkingResult.unmatchedOCFs, id: \.fileName) { ocf in
+                                ForEach(ocfs, id: \.fileName) { ocf in
                                     UnmatchedFileRowView(file: ocf, type: .ocf)
                                         .tag(ocf.fileName)
                                 }
                             } header: {
                                 HStack {
                                     Text(
-                                        "Unmatched OCF Files (\(linkingResult.unmatchedOCFs.count))"
+                                        "Unmatched OCF Files (\(ocfs.count))"
                                     )
                                     .monospacedDigit()
 
@@ -818,7 +825,7 @@ struct LinkingResultsView: View {
                                         Button(
                                             "Remove Unmatched OCF Files", systemImage: "trash"
                                         ) {
-                                            removeUnmatchedOCFFiles()
+                                            removeUnmatchedOCFFiles(ocfs)
                                         }
                                         .foregroundColor(.red)
                                     } label: {
@@ -836,9 +843,9 @@ struct LinkingResultsView: View {
                         }
 
                         // Low Confidence Matches
-                        if !lowConfidenceSegments.isEmpty {
-                            Section("Low Confidence Matches (\(lowConfidenceSegments.count))") {
-                                ForEach(lowConfidenceSegments, id: \.segment.fileName) {
+                        if !lowConfidence.isEmpty {
+                            Section("Low Confidence Matches (\(lowConfidence.count))") {
+                                ForEach(lowConfidence, id: \.segment.fileName) {
                                     linkedSegment in
                                     LowConfidenceSegmentRowView(
                                         linkedSegment: linkedSegment,
@@ -864,35 +871,25 @@ struct LinkingResultsView: View {
 
     // MARK: - Unmatched File Removal
 
-    private func removeUnmatchedOCFFiles() {
-        guard let currentLinkingResult = linkingResult else { return }
-        let fileNamesToRemove = currentLinkingResult.unmatchedOCFs.map { $0.fileName }
+    private func matchesUnmatchedSearch(_ file: MediaFileInfo) -> Bool {
+        unmatchedSearch.isEmpty || file.fileName.localizedCaseInsensitiveContains(unmatchedSearch)
+    }
 
-        // Remove from project files
-        project.model.ocfFiles.removeAll { fileNamesToRemove.contains($0.fileName) }
+    private func removeUnmatchedOCFFiles(_ files: [MediaFileInfo]) {
+        guard let result = linkingResult else { return }
+        let paths = Set(files.map { $0.url.standardizedFileURL.path })
+        project.model.ocfFiles.removeAll { paths.contains($0.url.standardizedFileURL.path) }
 
-        // Clean up related blank rush status
-        for fileName in fileNamesToRemove {
-            project.model.blankRushStatus.removeValue(forKey: fileName)
+        let remainingNames = Set(project.model.ocfFiles.map(\.fileName))
+        for file in files where !remainingNames.contains(file.fileName) {
+            project.model.blankRushStatus.removeValue(forKey: file.fileName)
         }
-
-        // Update the linking result to remove these from unmatched list (keep all linked data)
-        let updatedUnmatchedOCFs = currentLinkingResult.unmatchedOCFs.filter {
-            !fileNamesToRemove.contains($0.fileName)
-        }
-
-        let updatedLinkingResult = LinkingResult(
-            ocfParents: currentLinkingResult.ocfParents,  // Keep all linked data
-            unmatchedSegments: currentLinkingResult.unmatchedSegments,  // Keep unchanged
-            unmatchedOCFs: updatedUnmatchedOCFs  // Remove the files we deleted
+        project.model.linkingResult = LinkingResult(
+            ocfParents: result.ocfParents.filter { !paths.contains($0.ocf.url.standardizedFileURL.path) },
+            unmatchedSegments: result.unmatchedSegments,
+            unmatchedOCFs: result.unmatchedOCFs.filter { !paths.contains($0.url.standardizedFileURL.path) }
         )
-
-        project.model.linkingResult = updatedLinkingResult
         project.updateModified()
         projectManager.saveProject(project)
-
-        NSLog(
-            "🗑️ Removed \(fileNamesToRemove.count) unmatched OCF file(s) from project: \(fileNamesToRemove.joined(separator: ", "))"
-        )
     }
 }

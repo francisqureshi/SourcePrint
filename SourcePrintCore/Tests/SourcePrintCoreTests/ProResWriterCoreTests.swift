@@ -111,6 +111,12 @@ final class ProResWriterCoreTests: XCTestCase {
         let result = linker.linkSegments([segment24], withOCFParents: [ocf24])
         XCTAssertEqual(result.totalLinkedSegments, 1, "24fps segment should match 24fps OCF")
         XCTAssertEqual(result.totalSegments, 1)
+
+        let repeatedImport = ProjectOperations.addOCFFiles([ocf24, ocf24], existingOCFs: [ocf24])
+        XCTAssertEqual(repeatedImport.ocfFiles?.count, 1)
+        let duplicateInputs = linker.linkSegments([segment24, segment24], withOCFParents: [ocf24, ocf24])
+        XCTAssertEqual(duplicateInputs.ocfParents.count, 1)
+        XCTAssertEqual(duplicateInputs.totalLinkedSegments, 1)
     }
 
     func testCriticalFrameRateMismatch24vs23976() throws {
