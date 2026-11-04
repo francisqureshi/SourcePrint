@@ -328,14 +328,6 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
 
     /// Handle progress updates from RenderService
     public func renderService(_ service: RenderService, didUpdateProgress progress: RenderProgress) {
-        // Update current item with progress details and segment data
-        if var item = currentItem {
-            item.progress = progress.message
-            item.currentSegment = progress.currentSegment
-            item.totalSegments = progress.totalSegments
-            currentItem = item
-        }
-
         // Update current item frame progress for incremental progress bar
         if let framesProcessed = progress.currentItemFramesProcessed {
             currentItemFramesProcessed = framesProcessed
@@ -346,7 +338,14 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
             currentSegmentProgress = SegmentProgress(current: currentSeg, total: totalSeg)
         }
 
-        updateCurrentItemStatus(progress.status, progress: progress.message)
+        // Update current item with progress details and segment data
+        if var item = currentItem {
+            item.status = progress.status
+            item.progress = progress.message
+            item.currentSegment = progress.currentSegment
+            item.totalSegments = progress.totalSegments
+            currentItem = item
+        }
 
         // Forward segment-level progress to delegate
         delegate?.queueManager(self, didUpdateProgress: progress)

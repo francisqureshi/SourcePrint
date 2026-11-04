@@ -12,9 +12,6 @@ import SwiftUI
 import TimecodeKit
 
 extension Notification.Name {
-    static let expandSelectedCards = Notification.Name("expandSelectedCards")
-    static let collapseSelectedCards = Notification.Name("collapseSelectedCards")
-    static let collapseAllCards = Notification.Name("collapseAllCards")
     static let renderOCF = Notification.Name("renderOCF")
 }
 
@@ -55,7 +52,7 @@ struct LinkingResultsView: View {
     @ObservedObject var project: ProjectViewModel
     let timelineVisualizationData: [String: TimelineVisualization]
     @EnvironmentObject var projectManager: ProjectManager
-    @EnvironmentObject var statusBarVM: StatusBarViewModel
+    @Environment(StatusBarViewModel.self) private var statusBarVM
     var onPerformLinking: (() -> Void)? = nil
     var onGenerateBlankRushes: (() -> Void)? = nil
     var onCancelBlankRushes: (() -> Void)? = nil
@@ -79,12 +76,9 @@ struct LinkingResultsView: View {
     @State private var focusedOCFIndex: Int = 0
 
     // Render queue manager (from SourcePrintCore)
-    @StateObject private var renderQueueManager = RenderQueueManager()
+    @State private var renderQueueManager = RenderQueueManager()
 
-    // Computed property to track which OCF is currently rendering
-    private var currentlyRenderingOCF: String? {
-        renderQueueManager.currentItem?.ocfFileName
-    }
+    @State private var currentlyRenderingOCF: String?
 
     // Computed properties to separate high/medium confidence from low confidence segments
     var confidentlyLinkedParents: [OCFParent] {
@@ -292,34 +286,6 @@ struct LinkingResultsView: View {
         }
     }
 
-    private func handleSegmentProgressChange(_ segmentProgress: SourcePrintCore.SegmentProgress?) {
-        guard let segmentProgress = segmentProgress,
-            let item = renderQueueManager.currentItem
-        else { return }
-
-        let currentIndex = renderQueueManager.completedCount + renderQueueManager.failedCount + 1
-
-        // Use actual frame counts from completed segments (accounts for variable segment lengths)
-        // This is accurate because printProcessFFmpeg calculates actual frames from each completed segment
-        let totalProgressFrames =
-            renderQueueManager.cumulativeCompletedFrames
-            + renderQueueManager.currentItemFramesProcessed
-
-        statusBarVM.updateRenderProgress(
-            currentItem: currentIndex,
-            totalItems: renderQueueManager.initialTotalItems,
-            fileName: item.ocfFileName,
-            progress: item.progress,
-            currentSegment: segmentProgress.current,
-            totalSegments: segmentProgress.total,
-            totalFrames: renderQueueManager.totalFramesInQueue,
-            completedFrames: totalProgressFrames
-        )
-    }
-
-    // Render queue state is observed automatically via @StateObject
-    // SwiftUI will react to changes in renderQueueManager's @Published properties
-
     // MARK: - Project Status Updates
 
     private func handleRenderCompleted(_ result: RenderResult, projectManager: ProjectManager?) {
@@ -387,23 +353,13 @@ struct LinkingResultsView: View {
 
     var body: some View {
         contentWithKeyboardHandling
-            .onChange(of: renderQueueManager.lastCompletedResult) { _, result in
-                handleRenderCompletedChange(result)
-            }
-            .onChange(of: renderQueueManager.isProcessing) { _, isProcessing in
-                handleProcessingChange(isProcessing)
-            }
-            .onChange(of: renderQueueManager.currentItem) { _, item in
-                handleCurrentItemChange(item)
-            }
-            .onChange(of: renderQueueManager.currentSegmentProgress) { _, segmentProgress in
-                handleSegmentProgressChange(segmentProgress)
-            }
-            .onChange(of: renderQueueManager.currentItemFramesProcessed) { _, _ in
-                // Frame count changed - update status bar with new progress
-                if let item = renderQueueManager.currentItem {
-                    handleCurrentItemChange(item)
+            .onReceive(renderQueueManager.$lastCompletedResult.dropFirst(), perform: handleRenderCompletedChange)
+            .onReceive(renderQueueManager.$isProcessing.dropFirst(), perform: handleProcessingChange)
+            .onReceive(renderQueueManager.$currentItem) { item in
+                if currentlyRenderingOCF != item?.ocfFileName {
+                    currentlyRenderingOCF = item?.ocfFileName
                 }
+                handleCurrentItemChange(item)
             }
             .onChange(of: selectedOCFParents) { _, _ in
                 updateRenderButtonState()
@@ -418,11 +374,11 @@ struct LinkingResultsView: View {
             .focusable()
             .focusEffectDisabled()
             .onKeyPress(.rightArrow) {
-                expandSelectedCards()
+                setSelectedCardsExpanded(true)
                 return .handled
             }
             .onKeyPress(.leftArrow) {
-                collapseSelectedCards()
+                setSelectedCardsExpanded(false)
                 return .handled
             }
             .onKeyPress(.downArrow) {
@@ -521,14 +477,12 @@ struct LinkingResultsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func expandSelectedCards() {
-        // This will be handled by each individual card
-        NotificationCenter.default.post(name: .expandSelectedCards, object: nil)
-    }
-
-    private func collapseSelectedCards() {
-        // This will be handled by each individual card
-        NotificationCenter.default.post(name: .collapseSelectedCards, object: nil)
+    private func setSelectedCardsExpanded(_ expanded: Bool) {
+        guard !selectedOCFParents.isEmpty else { return }
+        var states = project.ocfCardExpansionState
+        for fileName in selectedOCFParents { states[fileName] = expanded }
+        withAnimation(.easeInOut(duration: 0.2)) { project.ocfCardExpansionState = states }
+        projectManager.saveProject(project)
     }
 
     private func handleDownArrow() {
@@ -729,8 +683,9 @@ struct LinkingResultsView: View {
                             selectedUnmatchedFiles.removeAll()
                         }
 
+                    let allParents = confidentlyLinkedParents
                     ScrollView {
-                        VStack(spacing: 12) {
+                        LazyVStack(spacing: 12) {
                             ForEach(
                                 Array(filteredConfidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName
                             ) { index, parent in
@@ -745,14 +700,9 @@ struct LinkingResultsView: View {
                                     navigationContext: $navigationContext,
                                     projectManager: projectManager,
                                     getSelectedParents: getSelectedParents,
-                                    allParents: confidentlyLinkedParents,
-                                    currentlyRenderingOCF: currentlyRenderingOCF,
-                                    renderProgress: renderQueueManager.currentItem?.ocfFileName
-                                        == parent.ocf.fileName
-                                        ? renderQueueManager.currentItem?.progress : nil,
-                                    renderSegmentProgress: renderQueueManager.currentItem?.ocfFileName
-                                        == parent.ocf.fileName
-                                        ? renderQueueManager.currentSegmentProgress : nil,
+                                    allParents: allParents,
+                                    isRendering: currentlyRenderingOCF == parent.ocf.fileName,
+                                    renderQueueManager: renderQueueManager,
                                     onRenderSingle: {
                                         renderSingle(parent: parent)
                                     }
@@ -763,7 +713,7 @@ struct LinkingResultsView: View {
                                         project: project,
                                         projectManager: projectManager,
                                         selectedParents: getSelectedParents(),
-                                        allParents: confidentlyLinkedParents
+                                        allParents: allParents
                                     )
                                 }
                             }
