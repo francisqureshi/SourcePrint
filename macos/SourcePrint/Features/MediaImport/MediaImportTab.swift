@@ -20,10 +20,38 @@ struct MediaImportTab: View {
     @State private var selectedSegments: Set<String> = []
     @State private var showRemoveOfflineConfirmation = false
     
+    @State private var confirmDuplicateCleanup = false
+
+    private var duplicateCount: Int {
+        let model = project.model
+        return model.ocfFiles.count - ProjectOperations.uniqueMediaFiles(model.ocfFiles).count
+            + model.segments.count - ProjectOperations.uniqueMediaFiles(model.segments).count
+    }
+
     var body: some View {
         VStack(spacing: 20) {
             // Watch Folder Section
             WatchFolderSection(project: project)
+
+            let repeatedEntries = duplicateCount
+            if repeatedEntries > 0 {
+                HStack {
+                    Label("\(repeatedEntries) repeated media entries", systemImage: "exclamationmark.triangle")
+                    Button("Clean Up…") { confirmDuplicateCleanup = true }
+                }
+                .confirmationDialog("Remove repeated project entries?", isPresented: $confirmDuplicateCleanup, titleVisibility: .visible) {
+                    Button("Remove Duplicate Entries", role: .destructive) {
+                        project.model.ocfFiles = ProjectOperations.uniqueMediaFiles(project.model.ocfFiles)
+                        project.model.segments = ProjectOperations.uniqueMediaFiles(project.model.segments)
+                        project.model.linkingResult = nil
+                        project.updateModified()
+                        projectManager.saveProject(project)
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Keep the first entry for each file path. Media files stay on disk. Link files again after cleanup.")
+                }
+            }
 
             // Offline Media Warning/Action Bar
             if !project.model.offlineMediaFiles.isEmpty {
@@ -213,6 +241,7 @@ struct MediaImportTab: View {
             let mediaFiles = await analyzeMediaFilesInParallel(urls: urls, isOCF: isOCF)
 
             await MainActor.run {
+                let previousCount = isOCF ? project.model.ocfFiles.count : project.model.segments.count
                 if isOCF {
                     project.addOCFFiles(mediaFiles)
                 } else {
@@ -223,9 +252,12 @@ struct MediaImportTab: View {
                 isAnalyzing = false
 
                 // Update status bar with completion
-                statusBarVM.completeOperation(summary: "Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") file\(mediaFiles.count == 1 ? "" : "s")")
-
-                NSLog("✅ Imported \(mediaFiles.count) \(isOCF ? "OCF" : "segment") files")
+                let added = (isOCF ? project.model.ocfFiles.count : project.model.segments.count) - previousCount
+                let skipped = mediaFiles.count - added
+                var summary = "Imported \(added) \(isOCF ? "OCF" : "segment") file\(added == 1 ? "" : "s")"
+                if skipped > 0 { summary += " · Skipped \(skipped) duplicate\(skipped == 1 ? "" : "s")" }
+                statusBarVM.completeOperation(summary: summary)
+                NSLog("%@", summary)
             }
         }
     }

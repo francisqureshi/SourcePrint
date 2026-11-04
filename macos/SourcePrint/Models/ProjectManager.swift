@@ -534,7 +534,11 @@ class ProjectManager: ObservableObject {
         }
 
         let linker = SegmentOCFLinker()
-        let result = linker.linkSegments(onlineSegments, withOCFParents: viewModel.model.ocfFiles)
+        let result = linker.linkSegments(
+            onlineSegments,
+            withOCFParents: viewModel.model.ocfFiles,
+            manualOverrides: viewModel.model.manualLinkOverrides
+        )
 
         viewModel.updateLinkingResult(result)
         // Refresh print status after linking (in case segment files changed)

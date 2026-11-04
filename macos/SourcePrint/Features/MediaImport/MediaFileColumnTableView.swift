@@ -21,6 +21,12 @@ struct MediaFileColumnTableView: View {
     
     @State private var selection = Set<String>()
     
+    @State private var searchText = ""
+
+    private var visibleFiles: [MediaFileInfo] {
+        searchText.isEmpty ? files : files.filter { $0.fileName.localizedCaseInsensitiveContains(searchText) }
+    }
+
     // Column width state - user adjustable and responsive
     @State private var clipNameWidth: CGFloat = 200
     @State private var startTCWidth: CGFloat = 100
@@ -78,6 +84,12 @@ struct MediaFileColumnTableView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             headerView
+            TextField("Search \(type.displayName)", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .padding(8)
+                .onChange(of: searchText) {
+                    selection.formIntersection(visibleFiles.map(\.fileName))
+                }
             
             GeometryReader { geometry in
                 ScrollView(.horizontal, showsIndicators: true) {
@@ -252,7 +264,7 @@ struct MediaFileColumnTableView: View {
     }
     
     private var fileRowsView: some View {
-        List(files, id: \.fileName, selection: $selection) { file in
+        List(visibleFiles, id: \.fileName, selection: $selection) { file in
             MediaFileColumnRowView(
                 file: file.toDisplayInfo(),
                 type: type,
@@ -273,6 +285,11 @@ struct MediaFileColumnTableView: View {
             )
             .listRowInsets(EdgeInsets())
             .listRowBackground(Color.clear)
+        }
+        .overlay {
+            if !searchText.isEmpty && visibleFiles.isEmpty {
+                Text("No matching files").foregroundStyle(.secondary)
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
