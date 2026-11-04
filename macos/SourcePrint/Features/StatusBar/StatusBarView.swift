@@ -234,61 +234,21 @@ struct StatusBarView: View {
 
     private var renderingButtons: some View {
         HStack(spacing: 8) {
-            // Primary render button (changes based on selection)
-            if viewModel.totalRenderableCount > 0 {
-                Button(action: {
-                    if viewModel.selectedRenderCount > 0 {
-                        viewModel.onRenderSelected?()
-                    } else {
-                        viewModel.onRenderAll?()
-                    }
-                }) {
-                    Text(renderButtonLabel)
-                        .font(.system(size: 14, weight: .medium))
-                        .monospacedDigit()
-                        .frame(minWidth: 100) // Wide enough for "Render 999"
-                }
+            Button("Render Modified (\(viewModel.modifiedRenderCount))") { viewModel.onRenderModified?() }
+                .disabled(viewModel.modifiedRenderCount == 0)
+
+            if viewModel.selectedRenderCount > 0 {
+                Button("Render Selected (\(viewModel.selectedRenderCount))") { viewModel.onRenderSelected?() }
+            }
+
+            Button("Render All") { viewModel.onRenderAll?() }
                 .buttonStyle(.borderedProminent)
                 .tint(accentColor)
-                .controlSize(.regular)
-                .help(renderButtonTooltip)
-            }
-
-            // Re-render Modified button (only if there are modified files)
-            if viewModel.modifiedRenderCount > 0 {
-                Button(action: {
-                    viewModel.onRenderModified?()
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11))
-                        Text("Modified (\(viewModel.modifiedRenderCount))")
-                            .font(.system(size: 13))
-                            .monospacedDigit()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .help("Re-render \(viewModel.modifiedRenderCount) modified OCF file\(viewModel.modifiedRenderCount == 1 ? "" : "s")")
-            }
+                .disabled(viewModel.totalRenderableCount == 0)
         }
+        .monospacedDigit()
     }
 
-    private var renderButtonLabel: String {
-        if viewModel.selectedRenderCount > 0 {
-            return "Render \(viewModel.selectedRenderCount)"
-        } else {
-            return "Render All"
-        }
-    }
-
-    private var renderButtonTooltip: String {
-        if viewModel.selectedRenderCount > 0 {
-            return "Render \(viewModel.selectedRenderCount) selected OCF file\(viewModel.selectedRenderCount == 1 ? "" : "s")"
-        } else {
-            return "Render all \(viewModel.totalRenderableCount) OCF files"
-        }
-    }
 }
 
 // MARK: - Preview

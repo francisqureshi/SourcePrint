@@ -63,7 +63,7 @@ struct LinkingResultsView: View {
     }
     @State private var selectedLinkedFiles: Set<String> = []
     @State private var selectedUnmatchedFiles: Set<String> = []
-    @State private var selectedOCFParents: Set<String> = []
+    @State private var selectedOCFParents: Set<URL> = []
     @State private var showUnmatchedDrawer = true
     @State private var unmatchedSearch = ""
     @State private var searchText: String = ""
@@ -126,25 +126,50 @@ struct LinkingResultsView: View {
             + lowConfidenceSegments.count
     }
 
-    // Batch render computed properties
-    var canRenderAll: Bool {
-        return confidentlyLinkedParents.contains { parent in
-            !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
-        }
+    @State private var modifiedURLs: Set<URL> = []
+
+    private var renderableParents: [OCFParent] {
+        confidentlyLinkedParents.filter { !project.model.offlineMediaFiles.contains($0.ocf.fileName) }
     }
 
-    var canRenderModified: Bool {
-        return confidentlyLinkedParents.contains { parent in
-            parent.children.contains { child in
-                project.model.segmentModificationDates[child.segment.fileName] != nil
-            }
+    private func refreshModifiedJobs() async {
+        let model = project.model
+        let names = Dictionary(grouping: model.ocfFiles, by: \.fileName)
+        var lastSuccess: [URL: Date] = [:]
+        for record in model.printHistory where record.success {
+            let matches = names[record.ocfFileName]
+            guard let url = record.ocfURL ?? (matches?.count == 1 ? matches?.first?.url : nil) else { continue }
+            lastSuccess[url] = max(lastSuccess[url] ?? .distantPast, record.date)
         }
+        let jobs = renderableParents.compactMap { parent -> (URL, Date, [URL])? in
+            var baseline = lastSuccess[parent.ocf.url]
+            if baseline == nil, names[parent.ocf.fileName]?.count == 1 {
+                switch model.printStatus[parent.ocf.fileName] {
+                case .printed(let date, _), .needsReprint(let date, _): baseline = date
+                default: break
+                }
+            }
+            guard let baseline else { return nil }
+            return (parent.ocf.url, baseline, parent.children.map { $0.segment.url })
+        }
+        let changed = await Task.detached(priority: .utility) {
+            Set(jobs.compactMap { url, date, grades -> URL? in
+                let modified = grades.contains { grade in
+                    guard case .success(let mtime) = FileSystemOperations.getModificationDate(for: grade) else { return false }
+                    return mtime > date
+                }
+                return modified ? url : nil
+            })
+        }.value
+        guard !Task.isCancelled else { return }
+        modifiedURLs = changed
+        updateRenderButtonState()
     }
 
     // Helper to get selected OCF parents for context menu batch operations
     private func getSelectedParents() -> [OCFParent] {
         return confidentlyLinkedParents.filter { parent in
-            selectedOCFParents.contains(parent.ocf.fileName)
+            selectedOCFParents.contains(parent.ocf.url)
         }
     }
 
@@ -162,11 +187,7 @@ struct LinkingResultsView: View {
     }
 
     private func renderModified() {
-        let modifiedOCFs = confidentlyLinkedParents.filter { parent in
-            parent.children.contains { child in
-                project.model.segmentModificationDates[child.segment.fileName] != nil
-            }
-        }
+        let modifiedOCFs = renderableParents.filter { modifiedURLs.contains($0.ocf.url) }
 
         NSLog("🔄 Starting batch render for %d modified OCFs", modifiedOCFs.count)
 
@@ -176,7 +197,7 @@ struct LinkingResultsView: View {
 
     private func renderSelected() {
         let selectedOCFs = confidentlyLinkedParents.filter { parent in
-            selectedOCFParents.contains(parent.ocf.fileName)
+            selectedOCFParents.contains(parent.ocf.url)
         }.filter { parent in
             !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
         }
@@ -215,20 +236,13 @@ struct LinkingResultsView: View {
 
         // Count selected OCFs that are also renderable
         let selectedRenderable = renderableOCFs.filter { parent in
-            selectedOCFParents.contains(parent.ocf.fileName)
-        }
-
-        // Count modified OCFs
-        let modifiedOCFs = confidentlyLinkedParents.filter { parent in
-            parent.children.contains { child in
-                project.model.segmentModificationDates[child.segment.fileName] != nil
-            }
+            selectedOCFParents.contains(parent.ocf.url)
         }
 
         // Update status bar state
         statusBarVM.totalRenderableCount = renderableOCFs.count
         statusBarVM.selectedRenderCount = selectedRenderable.count
-        statusBarVM.modifiedRenderCount = modifiedOCFs.count
+        statusBarVM.modifiedRenderCount = renderableOCFs.filter { modifiedURLs.contains($0.ocf.url) }.count
     }
 
     private func setupView() {
@@ -308,7 +322,7 @@ struct LinkingResultsView: View {
 
             // Clear modification dates for printed segments
             if let parent = confidentlyLinkedParents.first(where: {
-                $0.ocf.fileName == result.ocfFileName
+                $0.ocf.url == result.ocfURL
             }) {
                 for child in parent.children {
                     project.model.segmentModificationDates.removeValue(
@@ -320,6 +334,7 @@ struct LinkingResultsView: View {
             project.addPrintRecord(SourcePrintCore.PrintRecord(
                 date: Date(),
                 ocfFileName: result.ocfFileName,
+                ocfURL: result.ocfURL,
                 outputURL: result.outputURL
                     ?? project.model.outputDirectory.appendingPathComponent(result.ocfFileName),
                 segmentCount: result.segmentCount,
@@ -333,6 +348,7 @@ struct LinkingResultsView: View {
             project.addPrintRecord(SourcePrintCore.PrintRecord(
                 date: Date(),
                 ocfFileName: result.ocfFileName,
+                ocfURL: result.ocfURL,
                 outputURL: project.model.outputDirectory.appendingPathComponent(result.ocfFileName),
                 segmentCount: result.segmentCount,
                 duration: result.duration,
@@ -362,6 +378,12 @@ struct LinkingResultsView: View {
                     currentlyRenderingOCF = item?.ocfFileName
                 }
                 handleCurrentItemChange(item)
+            }
+            .task(id: project.model.lastModified) {
+                while !Task.isCancelled {
+                    await refreshModifiedJobs()
+                    try? await Task.sleep(for: .seconds(30))
+                }
             }
             .onChange(of: selectedOCFParents) { _, _ in
                 updateRenderButtonState()
@@ -402,7 +424,7 @@ struct LinkingResultsView: View {
                 // Check if Command key is pressed
                 if press.modifiers.contains(.command) {
                     // Select all OCF parents
-                    selectedOCFParents = Set(filteredConfidentlyLinkedParents.map { $0.ocf.fileName })
+                    selectedOCFParents = Set(filteredConfidentlyLinkedParents.map { $0.ocf.url })
                     selectedLinkedFiles.removeAll()
                     selectedUnmatchedFiles.removeAll()
                     navigationContext = .ocfList
@@ -482,7 +504,7 @@ struct LinkingResultsView: View {
     private func setSelectedCardsExpanded(_ expanded: Bool) {
         guard !selectedOCFParents.isEmpty else { return }
         var states = project.ocfCardExpansionState
-        for fileName in selectedOCFParents { states[fileName] = expanded }
+        for url in selectedOCFParents { states[url.lastPathComponent] = expanded }
         withAnimation(.easeInOut(duration: 0.2)) { project.ocfCardExpansionState = states }
         projectManager.saveProject(project)
     }
@@ -506,13 +528,13 @@ struct LinkingResultsView: View {
             if isExpanded && !sortedChildren.isEmpty {
                 // OCF is expanded and has segments → move to first segment
                 navigationContext = .segmentList
-                selectedOCFParents = [currentOCF.ocf.fileName]
+                selectedOCFParents = [currentOCF.ocf.url]
                 selectedLinkedFiles = [sortedChildren[0].segment.fileName]
             } else {
                 // OCF is collapsed or has no segments → move to next OCF
                 if focusedOCFIndex < confidentlyLinkedParents.count - 1 {
                     focusedOCFIndex += 1
-                    selectedOCFParents = [confidentlyLinkedParents[focusedOCFIndex].ocf.fileName]
+                    selectedOCFParents = [confidentlyLinkedParents[focusedOCFIndex].ocf.url]
                 }
             }
 
@@ -535,7 +557,7 @@ struct LinkingResultsView: View {
                     focusedOCFIndex += 1
                     navigationContext = .ocfList
                     selectedLinkedFiles.removeAll()
-                    selectedOCFParents = [confidentlyLinkedParents[focusedOCFIndex].ocf.fileName]
+                    selectedOCFParents = [confidentlyLinkedParents[focusedOCFIndex].ocf.url]
                 }
             }
         }
@@ -570,7 +592,7 @@ struct LinkingResultsView: View {
                 // At first segment → move back to parent OCF card
                 navigationContext = .ocfList
                 selectedLinkedFiles.removeAll()
-                selectedOCFParents = [currentOCF.ocf.fileName]
+                selectedOCFParents = [currentOCF.ocf.url]
             }
 
         case .ocfList:
@@ -584,11 +606,11 @@ struct LinkingResultsView: View {
                 if isExpanded && !previousSortedChildren.isEmpty {
                     // Previous OCF is expanded → jump to its last segment
                     navigationContext = .segmentList
-                    selectedOCFParents = [previousOCF.ocf.fileName]
+                    selectedOCFParents = [previousOCF.ocf.url]
                     selectedLinkedFiles = [previousSortedChildren.last!.segment.fileName]
                 } else {
                     // Previous OCF is collapsed → select it
-                    selectedOCFParents = [previousOCF.ocf.fileName]
+                    selectedOCFParents = [previousOCF.ocf.url]
                 }
             }
         // If already at first OCF, do nothing (stay at top)
@@ -689,7 +711,7 @@ struct LinkingResultsView: View {
                     ScrollView {
                         LazyVStack(spacing: 12) {
                             ForEach(
-                                Array(filteredConfidentlyLinkedParents.enumerated()), id: \.element.ocf.fileName
+                                Array(filteredConfidentlyLinkedParents.enumerated()), id: \.element.ocf.url
                             ) { index, parent in
                                 CompressorStyleOCFCard(
                                     parent: parent,

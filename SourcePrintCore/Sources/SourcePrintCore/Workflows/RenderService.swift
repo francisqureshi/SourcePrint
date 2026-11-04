@@ -44,6 +44,7 @@ public class RenderService {
             let duration = Date().timeIntervalSince(startTime)
             return RenderResult(
                 ocfFileName: parent.ocf.fileName,
+                ocfURL: parent.ocf.url,
                 success: false,
                 outputURL: nil,
                 error: blankRushResult.error ?? "Failed to create blank rush",
@@ -62,6 +63,7 @@ public class RenderService {
 
         return RenderResult(
             ocfFileName: parent.ocf.fileName,
+            ocfURL: parent.ocf.url,
             success: compositionResult.success,
             outputURL: compositionResult.url,
             error: compositionResult.error,

@@ -120,6 +120,7 @@ public struct RenderProgress: Equatable {
 /// Result of a render operation
 public struct RenderResult: Equatable {
     public let ocfFileName: String
+    public let ocfURL: URL?
     public let success: Bool
     public let outputURL: URL?
     public let error: String?
@@ -129,6 +130,7 @@ public struct RenderResult: Equatable {
 
     public init(
         ocfFileName: String,
+        ocfURL: URL? = nil,
         success: Bool,
         outputURL: URL? = nil,
         error: String? = nil,
@@ -137,6 +139,7 @@ public struct RenderResult: Equatable {
         blankRushURL: URL? = nil
     ) {
         self.ocfFileName = ocfFileName
+        self.ocfURL = ocfURL
         self.success = success
         self.outputURL = outputURL
         self.error = error
@@ -147,6 +150,7 @@ public struct RenderResult: Equatable {
 
     public static func == (lhs: RenderResult, rhs: RenderResult) -> Bool {
         lhs.ocfFileName == rhs.ocfFileName &&
+        lhs.ocfURL == rhs.ocfURL &&
         lhs.success == rhs.success &&
         lhs.outputURL == rhs.outputURL &&
         lhs.error == rhs.error

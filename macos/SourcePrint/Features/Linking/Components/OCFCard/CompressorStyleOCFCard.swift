@@ -16,7 +16,7 @@ struct CompressorStyleOCFCard: View {
     @ObservedObject var project: ProjectViewModel
     let timelineVisualizationData: [String: TimelineVisualization]
     @Binding var selectedLinkedFiles: Set<String>
-    @Binding var selectedOCFParents: Set<String>
+    @Binding var selectedOCFParents: Set<URL>
     @Binding var focusedOCFIndex: Int
     @Binding var navigationContext: LinkingResultsView.NavigationContext
     let projectManager: ProjectManager
@@ -29,7 +29,7 @@ struct CompressorStyleOCFCard: View {
     private var isExpanded: Bool { project.ocfCardExpansionState[parent.ocf.fileName] ?? true }
 
     private var isSelected: Bool {
-        selectedOCFParents.contains(parent.ocf.fileName)
+        selectedOCFParents.contains(parent.ocf.url)
     }
 
     private func handleCardSelection() {
@@ -46,21 +46,21 @@ struct CompressorStyleOCFCard: View {
             handleRangeSelection()
         } else {
             // Simple toggle
-            if selectedOCFParents.contains(parent.ocf.fileName) {
-                selectedOCFParents.remove(parent.ocf.fileName)
+            if selectedOCFParents.contains(parent.ocf.url) {
+                selectedOCFParents.remove(parent.ocf.url)
             } else {
-                selectedOCFParents.insert(parent.ocf.fileName)
+                selectedOCFParents.insert(parent.ocf.url)
             }
         }
     }
 
     private func handleRangeSelection() {
         // Find the last selected item to use as range start
-        guard let lastSelectedFileName = selectedOCFParents.first,
-              let lastIndex = allParents.firstIndex(where: { $0.ocf.fileName == lastSelectedFileName }),
-              let currentIndex = allParents.firstIndex(where: { $0.ocf.fileName == parent.ocf.fileName }) else {
+        guard let lastSelectedURL = selectedOCFParents.first,
+              let lastIndex = allParents.firstIndex(where: { $0.ocf.url == lastSelectedURL }),
+              let currentIndex = allParents.firstIndex(where: { $0.ocf.url == parent.ocf.url }) else {
             // No previous selection, just select this one
-            selectedOCFParents.insert(parent.ocf.fileName)
+            selectedOCFParents.insert(parent.ocf.url)
             return
         }
 
@@ -69,7 +69,7 @@ struct CompressorStyleOCFCard: View {
 
         // Select all items in the range
         for i in startIndex...endIndex {
-            selectedOCFParents.insert(allParents[i].ocf.fileName)
+            selectedOCFParents.insert(allParents[i].ocf.url)
         }
     }
 
@@ -182,7 +182,7 @@ struct CompressorStyleOCFCard: View {
                         focusedOCFIndex = ocfIndex
                         navigationContext = .segmentList
                         selectedLinkedFiles = [linkedSegment.segment.fileName]
-                        selectedOCFParents = [parent.ocf.fileName]
+                        selectedOCFParents = [parent.ocf.url]
                     }
                     .background(
                         selectedLinkedFiles.contains(linkedSegment.segment.fileName)
