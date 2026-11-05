@@ -198,16 +198,80 @@ struct LinkingResultsView: View {
         }
     }
 
-    private func enqueueFresh(batchName: String, parents: @escaping () -> [OCFParent]) {
-        guard !project.isPublishing else { return }
+    @State private var isCheckingSources = false
+    private struct RenderChangeReview: Identifiable {
+        let id = UUID()
+        let changes: [SourceMediaRefresh.Change]
+        let proceed: () -> Void
+    }
+    @State private var pendingReview: RenderChangeReview?
+
+    private func enqueueFresh(batchName: String, parents: @escaping () -> [OCFParent], approved: [URL: RenderOutputFingerprint] = [:]) {
+        guard !project.isPublishing, !isCheckingSources else { return }
         showRenderLog = true
+        isCheckingSources = true
         Task { @MainActor in
-            guard await project.refreshGradedMedia(), !project.isPublishing else { return }
-            await refreshModifiedJobs()
-            projectManager.saveProject(project)
-            renderQueueManager.addToQueue(parents(), batchName: batchName)
-            renderQueueManager.startProcessing()
+            defer { isCheckingSources = false }
+            do {
+                let changes = try await SourceMediaRefresh.changes(in: project.model.segments)
+                let unapproved = changes.filter { approved[$0.id] != $0.refreshed.analyzedFingerprint }
+                if !unapproved.isEmpty {
+                    let versions = Dictionary(uniqueKeysWithValues: changes.compactMap { change in
+                        change.refreshed.analyzedFingerprint.map { (change.id, $0) }
+                    })
+                    pendingReview = RenderChangeReview(changes: changes) {
+                        enqueueFresh(batchName: batchName, parents: parents, approved: versions)
+                    }
+                    return
+                }
+                let requestedSegments = Set(parents().flatMap { $0.children.map { $0.segment.url } })
+                guard await project.refreshGradedMedia(), !project.isPublishing else { return }
+                await refreshModifiedJobs()
+                projectManager.saveProject(project)
+                let refreshedParents = parents()
+                let availableSegments = Set(refreshedParents.flatMap { $0.children.map { $0.segment.url } })
+                guard !refreshedParents.isEmpty, requestedSegments.isSubset(of: availableSegments) else {
+                    project.mediaRefreshNotice = "Changed clips no longer match the requested jobs. Review the links before rendering."
+                    return
+                }
+                renderQueueManager.addToQueue(refreshedParents, batchName: batchName)
+                renderQueueManager.startProcessing()
+            } catch {
+                project.mediaRefreshNotice = "Cannot check graded clips: \(error.localizedDescription)"
+            }
         }
+    }
+
+    private func sourceChangesSheet(_ review: RenderChangeReview) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Graded clips changed", systemImage: "exclamationmark.triangle.fill")
+                .font(.title2)
+            Text("Review the changes before rendering. Continuing updates the media, checks the links and rebuilds the requested jobs.")
+                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(review.changes) { change in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(change.original.fileName).font(.headline)
+                            Text(change.id.path).font(.caption).foregroundStyle(.secondary)
+                            ForEach(change.details, id: \.self) { Text($0).monospacedDigit() }
+                        }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    pendingReview = nil
+                }.keyboardShortcut(.cancelAction)
+                Button("Update & Render") {
+                    pendingReview = nil
+                    review.proceed()
+                }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 600, height: 400)
     }
 
     private func cancelCurrentOperation() {
@@ -375,6 +439,7 @@ struct LinkingResultsView: View {
 
     var body: some View {
         contentWithKeyboardHandling
+            .sheet(item: $pendingReview) { review in sourceChangesSheet(review) }
             .safeAreaInset(edge: .top) {
                 if let notice = project.mediaRefreshNotice {
                     Label(notice, systemImage: "exclamationmark.triangle.fill")
@@ -390,14 +455,11 @@ struct LinkingResultsView: View {
                 }
                 handleCurrentItemChange(item)
             }
-            .task {
-                while !Task.isCancelled {
-                    let previous = project.model.lastModified
-                    _ = await project.refreshGradedMedia()
-                    if project.model.lastModified != previous { projectManager.saveProject(project) }
-                    await refreshModifiedJobs()
-                    try? await Task.sleep(for: .seconds(30))
-                }
+            .task(id: project.model.lastModified) {
+                await refreshModifiedJobs()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task { await refreshModifiedJobs() }
             }
             .onChange(of: project.isPublishing) { _, publishing in
                 statusBarVM.isPublishing = publishing

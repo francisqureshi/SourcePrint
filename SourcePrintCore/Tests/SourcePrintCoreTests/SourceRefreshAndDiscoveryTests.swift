@@ -153,6 +153,28 @@ final class SourceRefreshAndDiscoveryTests: XCTestCase {
         XCTAssertEqual(result.unmatchedSegments.first?.url, laterURL)
     }
 
+    func testRenderInspectionReportsFramesWithoutChangingSavedMetadata() async throws {
+        let url = try movie("Camera_grade.mov", seconds: 1)
+        let saved = try await MediaAnalyzer().analyzeMediaFile(at: url, type: .gradedSegment)
+        _ = try movie("Camera_grade.mov", seconds: 3, timecode: "01:00:02:00")
+        let changes = try await SourceMediaRefresh.changes(in: [saved, saved])
+        XCTAssertEqual(changes.count, 1)
+        XCTAssertEqual(saved.durationInFrames, 24)
+        XCTAssertEqual(saved.sourceTimecode, "01:00:00:00")
+        XCTAssertTrue(changes[0].details.contains("Duration: 24 → 72 frames"))
+        XCTAssertTrue(changes[0].details.contains("Start TC: 01:00:00:00 → 01:00:02:00"))
+        XCTAssertFalse(changes[0].details.joined().contains("seconds"))
+        let repeated = try await SourceMediaRefresh.changes(in: [saved])
+        XCTAssertEqual(repeated.count, 1, "Cancelling inspection must leave the change pending")
+        XCTAssertEqual(repeated[0].refreshed.analyzedFingerprint, changes[0].refreshed.analyzedFingerprint)
+        _ = try movie("Camera_grade.mov", seconds: 2)
+        let changedAgain = try await SourceMediaRefresh.changes(in: [saved])
+        XCTAssertNotEqual(changedAgain[0].refreshed.analyzedFingerprint, changes[0].refreshed.analyzedFingerprint)
+        let refreshed = try await SourceMediaRefresh.refresh(saved)
+        let unchanged = try await SourceMediaRefresh.changes(in: [refreshed])
+        XCTAssertTrue(unchanged.isEmpty)
+    }
+
     func testSameFilenameRefreshDoesNotUseOtherPathsMetadata() async throws {
         let first = try movie("A/Camera_grade.mov", seconds: 1)
         let second = try movie("B/Camera_grade.mov", seconds: 3)

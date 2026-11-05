@@ -163,14 +163,6 @@ struct MediaImportTab: View {
         } message: {
             Text("This will permanently remove all offline media files from the project. This cannot be undone.")
         }
-        .task {
-            while !Task.isCancelled {
-                let previous = project.model.lastModified
-                _ = await project.refreshGradedMedia()
-                if project.model.lastModified != previous { projectManager.saveProject(project) }
-                try? await Task.sleep(for: .seconds(5))
-            }
-        }
         .onAppear {
             // Set status bar tab context
             statusBarVM.currentTab = .media
