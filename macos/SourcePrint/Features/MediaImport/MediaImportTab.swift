@@ -29,16 +29,6 @@ struct MediaImportTab: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            HStack {
-                Spacer()
-                Button("Find Matching OCF…", systemImage: "folder.badge.magnifyingglass") {
-                    findMatchingOCF()
-                }
-                .disabled(isAnalyzing || project.model.segments.isEmpty)
-                .help("Search a footage folder for original camera files matching your graded clips")
-            }
-            .padding(.horizontal)
-
             let repeatedEntries = duplicateCount
             if repeatedEntries > 0 {
                 HStack {
@@ -130,7 +120,9 @@ struct MediaImportTab: View {
                         showImportPicker()
                     },
                     isAnalyzing: isAnalyzing,
-                    onDropFiles: { importDroppedFiles($0, isOCF: true) }
+                    onDropFiles: { importDroppedFiles($0, isOCF: true) },
+                    onFindMatchingOCF: findMatchingOCF,
+                    canFindMatchingOCF: !project.model.segments.isEmpty
                 )
                 .frame(minWidth: 400)
 

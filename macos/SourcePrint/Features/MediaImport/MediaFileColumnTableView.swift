@@ -34,6 +34,8 @@ struct MediaFileColumnTableView: View {
     var reviewURLs: Set<URL> = []
     var reviewRequestID: UUID? = nil
     var unavailableURLs: Set<URL> = []
+    var onFindMatchingOCF: (() -> Void)? = nil
+    var canFindMatchingOCF = false
     @State private var isDropTargeted = false
     
     @State private var selection = Set<URL>()
@@ -189,6 +191,14 @@ struct MediaFileColumnTableView: View {
             
             Spacer()
             
+            if let findAction = onFindMatchingOCF {
+                Button("Find Matching OCF…", systemImage: "folder.badge.magnifyingglass", action: findAction)
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .disabled(isAnalyzing || !canFindMatchingOCF)
+                    .help("Search a footage folder for original camera files matching your graded clips")
+            }
+
             if let importAction = onImportAction {
                 Button("Import \(type == .ocf ? "OCF Files" : "Segments")...") {
                     importAction()
