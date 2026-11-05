@@ -10,6 +10,7 @@ import SourcePrintCore
 
 struct LinkingTab: View {
     @ObservedObject var project: ProjectViewModel
+    @Binding var selectedTab: ProjectTab
     @EnvironmentObject var projectManager: ProjectManager
     @Environment(StatusBarViewModel.self) private var statusBarVM
     @State private var isLinking = false
@@ -21,6 +22,7 @@ struct LinkingTab: View {
             // Linking Results Display
             LinkingResultsView(
                 project: project,
+                selectedTab: $selectedTab,
                 timelineVisualizationData: timelineVisualizationData,
                 onPerformLinking: performLinking,
                 onGenerateBlankRushes: generateBlankRushes,

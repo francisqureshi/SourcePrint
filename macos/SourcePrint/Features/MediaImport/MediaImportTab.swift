@@ -104,6 +104,17 @@ struct MediaImportTab: View {
                     .padding(.horizontal)
             }
 
+            if !project.mediaReviewURLs.isEmpty {
+                HStack {
+                    Label("\(project.mediaReviewURLs.count) clips highlighted for review. Check their metadata and availability before rendering again.", systemImage: "eye")
+                    Spacer()
+                    Button("Clear Highlights") {
+                        project.mediaReviewURLs = []
+                        project.mediaReviewRequestID = nil
+                    }
+                }.padding(.horizontal)
+            }
+
             // Media Tables
             HSplitView {
                 // OCF Files Table
@@ -145,7 +156,10 @@ struct MediaImportTab: View {
                         showImportPicker()
                     },
                     isAnalyzing: isAnalyzing,
-                    onDropFiles: { importDroppedFiles($0, isOCF: false) }
+                    onDropFiles: { importDroppedFiles($0, isOCF: false) },
+                    reviewURLs: project.mediaReviewURLs,
+                    reviewRequestID: project.mediaReviewRequestID,
+                    unavailableURLs: project.unavailableGradeURLs
                 )
                 .frame(minWidth: 400)
             }

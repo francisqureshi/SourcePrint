@@ -50,6 +50,7 @@ func sortedByTimecode(_ segments: [LinkedSegment]) -> [LinkedSegment] {
 
 struct LinkingResultsView: View {
     @ObservedObject var project: ProjectViewModel
+    @Binding var selectedTab: ProjectTab
     let timelineVisualizationData: [String: TimelineVisualization]
     @EnvironmentObject var projectManager: ProjectManager
     @Environment(StatusBarViewModel.self) private var statusBarVM
@@ -202,30 +203,34 @@ struct LinkingResultsView: View {
     private struct RenderChangeReview: Identifiable {
         let id = UUID()
         let changes: [SourceMediaRefresh.Change]
-        let proceed: () -> Void
+        let unavailable: [SourceMediaRefresh.Unavailable]
+        let review: () -> Void
     }
     @State private var pendingReview: RenderChangeReview?
 
-    private func enqueueFresh(batchName: String, parents: @escaping () -> [OCFParent], approved: [URL: RenderOutputFingerprint] = [:]) {
+    private func enqueueFresh(batchName: String, parents: @escaping () -> [OCFParent]) {
         guard !project.isPublishing, !isCheckingSources else { return }
         showRenderLog = true
         isCheckingSources = true
         Task { @MainActor in
             defer { isCheckingSources = false }
             do {
-                let changes = try await SourceMediaRefresh.changes(in: project.model.segments)
-                let unapproved = changes.filter { approved[$0.id] != $0.refreshed.analyzedFingerprint }
-                if !unapproved.isEmpty {
-                    let versions = Dictionary(uniqueKeysWithValues: changes.compactMap { change in
-                        change.refreshed.analyzedFingerprint.map { (change.id, $0) }
-                    })
-                    pendingReview = RenderChangeReview(changes: changes) {
-                        enqueueFresh(batchName: batchName, parents: parents, approved: versions)
+                let inspection = try await SourceMediaRefresh.inspect(project.model.segments)
+                let changes = inspection.changes
+                if !inspection.canRender || !changes.isEmpty {
+                    pendingReview = RenderChangeReview(changes: changes, unavailable: inspection.unavailable) {
+                        Task { @MainActor in
+                            project.mediaReviewURLs = Set(changes.map(\.id) + inspection.unavailable.map(\.id))
+                            project.mediaReviewRequestID = UUID()
+                            _ = await project.refreshGradedMedia()
+                            projectManager.saveProject(project)
+                            selectedTab = .media
+                        }
                     }
                     return
                 }
+                guard !project.isPublishing else { return }
                 let requestedSegments = Set(parents().flatMap { $0.children.map { $0.segment.url } })
-                guard await project.refreshGradedMedia(), !project.isPublishing else { return }
                 await refreshModifiedJobs()
                 projectManager.saveProject(project)
                 let refreshedParents = parents()
@@ -248,30 +253,43 @@ struct LinkingResultsView: View {
         let field: String
         let before: String
         let after: String
+        var blocked: Bool = false
+        var explanation: String = ""
         var id: String { url.absoluteString + "|" + field }
     }
 
     private func sourceChangesSheet(_ review: RenderChangeReview) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("Graded clips changed", systemImage: "exclamationmark.triangle.fill")
+        let blocked = !review.unavailable.isEmpty
+        let rows = review.unavailable.map { issue in
+            SourceChangeRow(url: issue.id, clip: issue.original.fileName, field: "Availability",
+                            before: "Imported", after: issue.status, blocked: true, explanation: issue.message)
+        } + review.changes.flatMap { change in
+            change.differences.map { difference in
+                SourceChangeRow(url: change.id, clip: change.original.fileName,
+                                field: difference.field, before: difference.before, after: difference.after)
+            }
+        }
+        return VStack(alignment: .leading, spacing: 16) {
+            Label(blocked ? "Graded clips need attention" : "Review graded clips", systemImage: "exclamationmark.triangle.fill")
                 .font(.title2)
-            Text("Review the changes before rendering. Continuing updates the media, checks the links and rebuilds the requested jobs.")
+            Text(blocked
+                 ? "Rendering is blocked. Choose Review to locate the highlighted clips in Media and reconnect or replace unavailable files."
+                 : "Rendering is paused. Choose Review to refresh the metadata and inspect the highlighted clips in Media before rendering again.")
                 .foregroundStyle(.secondary)
-            Table(review.changes.flatMap { change in
-                change.differences.map { difference in
-                    SourceChangeRow(url: change.id, clip: change.original.fileName,
-                                    field: difference.field, before: difference.before, after: difference.after)
-                }
-            }) {
+            if rows.isEmpty {
+                Text("All graded clips are available and up to date.").foregroundStyle(.secondary)
+            }
+            Table(rows) {
                 TableColumn("Clip") { row in
-                    Text(row.clip).lineLimit(1).help(row.url.path)
+                    Text(row.clip).lineLimit(1).foregroundStyle(row.blocked ? Color.red : Color.primary).help(row.url.path)
                 }.width(min: 180, ideal: 250)
                 TableColumn("Changed field", value: \.field).width(130)
                 TableColumn("Before") { row in
                     Text(row.before).monospacedDigit()
                 }.width(min: 110, ideal: 140)
                 TableColumn("After") { row in
-                    Text(row.after).monospacedDigit()
+                    Text(row.after).monospacedDigit().foregroundStyle(row.blocked ? Color.red : Color.primary)
+                        .help(row.explanation)
                 }.width(min: 110, ideal: 160)
             }
             .tableStyle(.inset(alternatesRowBackgrounds: true))
@@ -280,9 +298,9 @@ struct LinkingResultsView: View {
                 Button("Cancel", role: .cancel) {
                     pendingReview = nil
                 }.keyboardShortcut(.cancelAction)
-                Button("Update & Render") {
+                Button("Review") {
                     pendingReview = nil
-                    review.proceed()
+                    review.review()
                 }.keyboardShortcut(.defaultAction)
             }
         }

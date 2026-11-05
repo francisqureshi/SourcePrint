@@ -51,25 +51,72 @@ public enum SourceMediaRefresh {
 
     }
 
-    /// Read-only inspection: cancelling a render leaves the project's saved metadata intact.
-    public static func changes(in files: [MediaFileInfo]) async throws -> [Change] {
+    public struct Unavailable: Identifiable {
+        public var id: URL { original.url }
+        public let original: MediaFileInfo
+        public let status: String
+        public let message: String
+    }
+
+    public struct Inspection {
+        public let changes: [Change]
+        public let unavailable: [Unavailable]
+        public var canRender: Bool { unavailable.isEmpty }
+    }
+
+    /// Collect every unavailable clip alongside valid metadata changes, without mutating the project.
+    public static func inspect(_ files: [MediaFileInfo]) async throws -> Inspection {
         var changes: [Change] = []
+        var unavailable: [Unavailable] = []
         for file in ProjectOperations.uniqueMediaFiles(files) {
             try Task.checkCancellation()
-            let refreshed = try await refresh(file)
-            if refreshed.analyzedFingerprint != file.analyzedFingerprint {
-                changes.append(Change(original: file, refreshed: refreshed))
+            do {
+                let refreshed = try await refresh(file)
+                if refreshed.analyzedFingerprint != file.analyzedFingerprint {
+                    changes.append(Change(original: file, refreshed: refreshed))
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                let nsError = error as NSError
+                let missing = nsError.domain == NSCocoaErrorDomain &&
+                    (nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError)
+                unavailable.append(Unavailable(original: file,
+                    status: missing ? "Missing / offline" : "Unreadable",
+                    message: error.localizedDescription))
             }
         }
-        return changes
+        return Inspection(changes: changes, unavailable: unavailable)
+    }
+
+    /// Read-only inspection: cancelling a render leaves the project's saved metadata intact.
+    public static func changes(in files: [MediaFileInfo]) async throws -> [Change] {
+        let inspection = try await inspect(files)
+        if let issue = inspection.unavailable.first {
+            throw CocoaError(.fileReadUnknown, userInfo: [NSLocalizedDescriptionKey: "\(issue.original.fileName): \(issue.message)"])
+        }
+        return inspection.changes
     }
 
     public static func refresh(_ file: MediaFileInfo) async throws -> MediaFileInfo {
-        guard let current = RenderOutputFingerprint.capture(at: file.url) else {
-            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: file.url.path])
+        _ = try FileManager.default.attributesOfItem(atPath: file.url.path)
+        guard FileManager.default.isReadableFile(atPath: file.url.path) else {
+            throw CocoaError(.fileReadNoPermission, userInfo: [NSFilePathErrorKey: file.url.path])
         }
-        if file.analyzedFingerprint == current { return file }
+        guard let current = RenderOutputFingerprint.capture(at: file.url) else {
+            throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: file.url.path])
+        }
+        if file.analyzedFingerprint == current,
+           let resolution = file.resolution, resolution.width > 0, resolution.height > 0,
+           let frames = file.durationInFrames, frames > 0,
+           let rate = file.frameRate, rate.num > 0, rate.den > 0 { return file }
         var refreshed = try await MediaAnalyzer().analyzeMediaFile(at: file.url, type: file.mediaType)
+        guard let resolution = refreshed.resolution, resolution.width > 0, resolution.height > 0,
+              let frames = refreshed.durationInFrames, frames > 0,
+              let rate = refreshed.frameRate, rate.num > 0, rate.den > 0 else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey:
+                "Cannot read valid video metadata for \(file.fileName). The file may be incomplete or damaged."])
+        }
         refreshed.isVFXShot = file.isVFXShot
         return refreshed
     }

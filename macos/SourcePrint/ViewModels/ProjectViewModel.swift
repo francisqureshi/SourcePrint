@@ -17,6 +17,9 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
 
     @Published var isPublishing = false
     @Published var mediaRefreshNotice: String?
+    @Published var mediaReviewURLs: Set<URL> = []
+    @Published var mediaReviewRequestID: UUID?
+    @Published var unavailableGradeURLs: Set<URL> = []
     private var relinkAfterMediaRefresh = false
     private var mediaRefreshTask: Task<Bool, Never>?
 
@@ -28,6 +31,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
             let previousNotice = mediaRefreshNotice
             var changed = false
             var failures: [String] = []
+            var unavailable: Set<URL> = []
             for original in snapshot {
                 do {
                     let refreshed = try await SourceMediaRefresh.refresh(original)
@@ -51,9 +55,11 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
                         changed = true
                     }
                 } catch {
+                    unavailable.insert(original.url)
                     failures.append("\(original.fileName): \(error.localizedDescription)")
                 }
             }
+            unavailableGradeURLs = unavailable
             if !failures.isEmpty {
                 relinkAfterMediaRefresh = relinkAfterMediaRefresh || model.linkingResult != nil
                 model.linkingResult = nil

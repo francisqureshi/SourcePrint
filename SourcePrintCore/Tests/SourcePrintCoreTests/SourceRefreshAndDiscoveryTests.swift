@@ -175,6 +175,31 @@ final class SourceRefreshAndDiscoveryTests: XCTestCase {
         XCTAssertTrue(unchanged.isEmpty)
     }
 
+    func testInspectionCollectsMissingUnreadableAndChangedClipsTogether() async throws {
+        let names = ["MissingA.mov", "MissingB.mov", "Unreadable.mov", "Changed.mov"]
+        var saved: [MediaFileInfo] = []
+        for name in names {
+            let url = try movie(name, seconds: 1)
+            saved.append(try await MediaAnalyzer().analyzeMediaFile(at: url, type: .gradedSegment))
+        }
+        try FileManager.default.removeItem(at: saved[0].url)
+        try FileManager.default.removeItem(at: saved[1].url)
+        try Data("not a video".utf8).write(to: saved[2].url)
+        _ = try movie("Changed.mov", seconds: 3)
+        let result = try await SourceMediaRefresh.inspect(saved)
+        XCTAssertFalse(result.canRender)
+        XCTAssertEqual(result.unavailable.count, 3)
+        XCTAssertEqual(result.unavailable.filter { $0.status == "Missing / offline" }.count, 2)
+        XCTAssertEqual(result.unavailable.filter { $0.status == "Unreadable" }.count, 1)
+        XCTAssertEqual(result.changes.count, 1)
+        XCTAssertEqual(result.changes[0].refreshed.durationInFrames, 72)
+        XCTAssertEqual(saved[3].durationInFrames, 24)
+        for name in names.prefix(3) { _ = try movie(name, seconds: 1) }
+        let recovered = try await SourceMediaRefresh.inspect(saved)
+        XCTAssertTrue(recovered.canRender)
+        XCTAssertTrue(recovered.unavailable.isEmpty)
+    }
+
     func testSameFilenameRefreshDoesNotUseOtherPathsMetadata() async throws {
         let first = try movie("A/Camera_grade.mov", seconds: 1)
         let second = try movie("B/Camera_grade.mov", seconds: 3)
