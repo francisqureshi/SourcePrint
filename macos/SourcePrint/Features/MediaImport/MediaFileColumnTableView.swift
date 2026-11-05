@@ -37,6 +37,17 @@ struct MediaFileColumnTableView: View {
     var onFindMatchingOCF: (() -> Void)? = nil
     var canFindMatchingOCF = false
     @State private var isDropTargeted = false
+    @State private var unavailableOnDisk: Set<URL> = []
+    @State private var availabilityRevision = 0
+
+    private struct AvailabilityRequest: Equatable {
+        let urls: [URL]
+        let revision: Int
+    }
+
+    private func isOffline(_ file: MediaFileInfo) -> Bool {
+        unavailableOnDisk.contains(file.url) || unavailableURLs.contains(file.url)
+    }
     
     @State private var selection = Set<URL>()
     
@@ -74,7 +85,7 @@ struct MediaFileColumnTableView: View {
     }
 
     private func status(_ file: MediaFileInfo) -> (Int, Date) {
-        if offlineFiles.contains(file.fileName) || unavailableURLs.contains(file.url) { return (0, .distantPast) }
+        if isOffline(file) { return (0, .distantPast) }
         if let date = modificationDates[file.fileName] { return (1, date) }
         return (2, .distantPast)
     }
@@ -153,6 +164,17 @@ struct MediaFileColumnTableView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
             }
+        }
+        .task(id: AvailabilityRequest(urls: files.map(\.url), revision: availabilityRevision)) {
+            let urls = files.map(\.url)
+            let missing = await Task.detached(priority: .utility) {
+                Set(urls.filter { !FileManager.default.isReadableFile(atPath: $0.path) })
+            }.value
+            guard !Task.isCancelled else { return }
+            unavailableOnDisk = missing
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            availabilityRevision += 1
         }
         .contentShape(Rectangle())
         .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
@@ -274,7 +296,7 @@ struct MediaFileColumnTableView: View {
                 columns: columns,
                 file: file.toDisplayInfo(),
                 type: type,
-                isOffline: offlineFiles.contains(file.fileName) || unavailableURLs.contains(file.url),
+                isOffline: isOffline(file),
                 modificationDate: modificationDates[file.fileName],
                 onVFXToggle: onVFXToggle,
                 columnWidths: ColumnWidths(
