@@ -126,6 +126,10 @@ struct RenderHistoryDrawer: View {
                 Text(publishMessage).font(.caption).textSelection(.enabled).padding(.horizontal)
             }
             TextField("Search jobs, paths or results", text: $search)
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(AppTheme.backgroundTertiary, in: RoundedRectangle(cornerRadius: 6))
             .padding(.horizontal)
             .padding(.bottom, 8)
             Divider()
@@ -155,15 +159,18 @@ struct RenderHistoryDrawer: View {
                                     .padding(.leading, 20)
                                     .padding(.vertical, 6)
                                     .tag(record.id)
+                                    .listRowBackground(AppTheme.backgroundPrimary)
                                 }
                             }
                         } header: {
                             batchHeader(group)
+                                .listRowBackground(AppTheme.backgroundPrimary)
                         }
                     }
                     Color.clear
                         .frame(height: 1)
                         .listRowSeparator(.hidden)
+                        .listRowBackground(AppTheme.backgroundPrimary)
                         .id("latest-render")
                 }
                 .task(id: records.count) {
@@ -173,6 +180,8 @@ struct RenderHistoryDrawer: View {
                     scroll.scrollTo("latest-render", anchor: .bottom)
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(AppTheme.backgroundPrimary)
                 .overlay {
                     if visible.isEmpty {
                         ContentUnavailableView(
@@ -191,7 +200,7 @@ struct RenderHistoryDrawer: View {
                     .font(.callout).foregroundStyle(.secondary).padding()
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(AppTheme.backgroundPrimary)
         .onChange(of: search) { _, _ in selection = nil }
         .task(id: selection) { await inspectOutput() }
         .task(id: project.model.lastModified) {

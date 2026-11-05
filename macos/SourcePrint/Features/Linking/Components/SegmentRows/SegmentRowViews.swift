@@ -491,7 +491,10 @@ struct MatchReviewOutline: NSViewRepresentable {
         let table = NSOutlineView()
         table.headerView = NSTableHeaderView()
         table.rowHeight = 26
-        table.usesAlternatingRowBackgroundColors = true
+        table.usesAlternatingRowBackgroundColors = false
+        table.backgroundColor = NSColor(AppTheme.backgroundPrimary)
+        scroll.backgroundColor = NSColor(AppTheme.backgroundPrimary)
+        scroll.drawsBackground = true
         table.style = .fullWidth
         table.allowsMultipleSelection = false
         table.columnAutoresizingStyle = .noColumnAutoresizing

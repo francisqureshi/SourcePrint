@@ -1000,7 +1000,10 @@ struct LinkingResultsView: View {
                     .padding()
 
                     TextField("Search unmatched items", text: $unmatchedSearch)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(AppTheme.backgroundTertiary, in: RoundedRectangle(cornerRadius: 6))
                         .padding(.horizontal)
 
                     if !lowConfidenceSegments.isEmpty { bulkConfirmationControls }
