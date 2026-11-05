@@ -464,16 +464,7 @@ struct MediaFileColumnRowView: View {
                     .truncationMode(.middle)
                     .foregroundColor(isOffline ? .red : .primary)
 
-                if isOffline {
-                    Text("OFFLINE")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 1)
-                        .background(Color.appBackgroundBadge)
-                        .foregroundColor(Color.appError)
-                        .cornerRadius(3)
-                } else if file.isVFX && type == .segment {
+                if !isOffline && file.isVFX && type == .segment {
                     Text("VFX")
                         .font(.caption2)
                         .fontWeight(.medium)
