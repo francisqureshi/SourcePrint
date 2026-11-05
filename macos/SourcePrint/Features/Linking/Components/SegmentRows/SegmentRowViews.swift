@@ -460,3 +460,135 @@ struct OCFParentRowView: View {
         .padding(.vertical, 2)
     }
 }
+
+// Native outline keeps candidate selection independent from the highlighted inspection row.
+struct MatchReviewOutline: NSViewRepresentable {
+    let grades: [MediaFileInfo]
+    let unmatchedGrades: [MediaFileInfo]
+    let unmatchedOCFs: [MediaFileInfo]
+    let originals: [MediaFileInfo]
+    let choices: [URL: URL]
+    var onChoose: (URL, URL) -> Void
+    var onInspect: (URL?) -> Void
+
+    final class Node: NSObject {
+        let file: MediaFileInfo
+        let grade: URL?
+        let status: String
+        let key: String
+        var children: [Node] = []
+        init(_ file: MediaFileInfo, grade: URL?, status: String, key: String) {
+            self.file = file; self.grade = grade; self.status = status; self.key = key
+        }
+    }
+    final class ActionButton: NSButton {
+        var actionBlock: (() -> Void)?
+        @objc func runAction() { actionBlock?() }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        let table = NSOutlineView()
+        table.headerView = NSTableHeaderView()
+        table.rowHeight = 26
+        table.usesAlternatingRowBackgroundColors = true
+        table.style = .fullWidth
+        table.allowsMultipleSelection = false
+        table.columnAutoresizingStyle = .noColumnAutoresizing
+        for (name, width) in [("Name", 260.0), ("Choose", 60.0), ("Folder", 210.0), ("Status", 130.0), ("Resolution", 100.0), ("FPS", 65.0), ("Start TC", 110.0), ("End TC", 110.0), ("Reveal", 55.0)] {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(name))
+            column.title = name; column.width = width; column.minWidth = 45
+            column.resizingMask = .userResizingMask
+            table.addTableColumn(column)
+        }
+        table.outlineTableColumn = table.tableColumns.first
+        table.delegate = context.coordinator; table.dataSource = context.coordinator
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
+        context.coordinator.table = table
+        return scroll
+    }
+    func updateNSView(_ view: NSScrollView, context: Context) {
+        context.coordinator.update(self)
+    }
+    final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
+        var parent: MatchReviewOutline
+        weak var table: NSOutlineView?
+        var roots: [Node] = []
+        var signature = ""
+        var rebuilding = false
+        init(_ parent: MatchReviewOutline) { self.parent = parent }
+        func update(_ next: MatchReviewOutline) {
+            parent = next
+            guard let table else { return }
+            let linker = SegmentOCFLinker()
+            let nextRoots = next.grades.map { grade -> Node in
+                let candidates = linker.validCandidates(for: grade, in: next.originals)
+                let node = Node(grade, grade: grade.url, status: "\(candidates.count) candidates", key: "grade|\(grade.url.path)")
+                node.children = candidates.map { Node($0, grade: grade.url, status: "Valid candidate", key: "\(grade.url.path)|\($0.url.path)") }
+                return node
+            } + next.unmatchedGrades.map { Node($0, grade: nil, status: "Unmatched grade", key: "unmatched|\($0.url.path)") }
+              + next.unmatchedOCFs.map { Node($0, grade: nil, status: "Unmatched OCF", key: "ocf|\($0.url.path)") }
+            let nextSignature = nextRoots.flatMap { [$0.key] + $0.children.map(\.key) }.joined(separator: "\n")
+            if nextSignature == signature {
+                table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<table.numberOfRows), columnIndexes: IndexSet(integer: 1))
+                return
+            }
+            rebuilding = true
+            let expanded = Set(roots.filter { table.isItemExpanded($0) }.map(\.key))
+            let known = Set(roots.map(\.key))
+            let selected = (table.item(atRow: table.selectedRow) as? Node)?.key
+            roots = nextRoots; signature = nextSignature
+            table.reloadData()
+            for node in roots where expanded.contains(node.key) || !known.contains(node.key) { table.expandItem(node) }
+            if let node = (roots + roots.flatMap(\.children)).first(where: { $0.key == selected }), table.row(forItem: node) >= 0 {
+                table.selectRowIndexes(IndexSet(integer: table.row(forItem: node)), byExtendingSelection: false)
+            }
+            rebuilding = false
+        }
+        func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { (item as? Node)?.children.count ?? roots.count }
+        func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { (item as? Node)?.children[index] ?? roots[index] }
+        func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { !(item as! Node).children.isEmpty }
+        func outlineViewSelectionDidChange(_ notification: Notification) {
+            guard !rebuilding, let table else { return }
+            parent.onInspect((table.item(atRow: table.selectedRow) as? Node)?.grade)
+        }
+        func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+            guard let node = item as? Node, let column = tableColumn?.identifier.rawValue else { return nil }
+            let file = node.file
+            if column == "Reveal" || (column == "Choose" && node.status == "Valid candidate") {
+                let button = ActionButton()
+                button.target = button; button.action = #selector(ActionButton.runAction)
+                if column == "Reveal" {
+                    button.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Reveal in Finder")
+                    button.isBordered = false
+                    button.toolTip = "Reveal in Finder — \(file.url.path)"
+                    button.actionBlock = { NSWorkspace.shared.selectFile(file.url.path, inFileViewerRootedAtPath: "") }
+                } else if let grade = node.grade {
+                    button.setButtonType(.radio); button.title = ""
+                    button.state = parent.choices[grade] == file.url ? .on : .off
+                    button.setAccessibilityLabel("Choose \(file.fileName) in \(file.url.deletingLastPathComponent().path)")
+                    button.actionBlock = { [weak self] in self?.parent.onChoose(grade, file.url) }
+                }
+                return button
+            }
+            let text = NSTextField(labelWithString: "")
+            text.lineBreakMode = .byTruncatingMiddle
+            text.font = .systemFont(ofSize: NSFont.systemFontSize)
+            switch column {
+            case "Name": text.stringValue = file.fileName; if !node.children.isEmpty { text.font = .boldSystemFont(ofSize: NSFont.systemFontSize) }
+            case "Folder":
+                text.stringValue = file.url.deletingLastPathComponent().pathComponents.suffix(3).joined(separator: "/")
+                text.toolTip = file.url.deletingLastPathComponent().path
+            case "Status": text.stringValue = node.status; if node.status == "Unmatched grade" { text.textColor = .systemRed }
+            case "Resolution": text.stringValue = file.resolution.map { "\($0.width)×\($0.height)" } ?? "—"
+            case "FPS": text.stringValue = String(format: "%.3f", file.frameRateFloat ?? 0)
+            case "Start TC": text.stringValue = file.sourceTimecode ?? "—"
+            case "End TC": text.stringValue = file.endTimecode ?? "—"
+            default: break
+            }
+            if column == "Name" { text.toolTip = file.url.path }
+            return text
+        }
+    }
+}

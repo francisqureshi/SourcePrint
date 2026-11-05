@@ -308,6 +308,18 @@ struct LinkingResultsView: View {
         .frame(width: 820, height: 420)
     }
 
+    @State private var candidateChoices: [URL: URL] = [:]
+    @State private var inspectedGrade: URL?
+
+    private var effectiveCandidateChoices: [URL: URL] {
+        var result = candidateChoices
+        for child in lowConfidenceSegments where result[child.segment.url] == nil {
+            result[child.segment.url] = SegmentOCFLinker().preferredCandidate(for: child.segment,
+                in: project.model.ocfFiles, folder: project.model.preferredOCFFolder)?.url
+        }
+        return result
+    }
+
     private var bulkConfirmationPairs: [(segment: URL, ocf: URL)] {
         lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }.compactMap { child in
             guard let candidate = SegmentOCFLinker().preferredCandidate(for: child.segment,
@@ -342,6 +354,14 @@ struct LinkingResultsView: View {
                     }
                 }
                 Spacer()
+                Button("Confirm Link") {
+                    guard let grade = inspectedGrade, let ocf = effectiveCandidateChoices[grade],
+                          project.setManualLinkOverride(segmentURL: grade, ocfURL: ocf) else { return }
+                    projectManager.saveProject(project)
+                    project.performLinkingCallback?()
+                    inspectedGrade = nil
+                }
+                .disabled(inspectedGrade.flatMap { effectiveCandidateChoices[$0] } == nil)
                 Button("Confirm All (\(bulkConfirmationPairs.count))") {
                     let pairs = bulkConfirmationPairs
                     for pair in pairs {
@@ -980,75 +1000,27 @@ struct LinkingResultsView: View {
                     let segments = (linkingResult?.unmatchedSegments ?? []).filter { matchesUnmatchedSearch($0) }
                     let ocfs = (linkingResult?.unmatchedOCFs ?? []).filter { matchesUnmatchedSearch($0) }
                     let lowConfidence = lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }
-                    List(selection: $selectedUnmatchedFiles) {
-                        // Low Confidence Matches
-                        if !lowConfidence.isEmpty {
-                            Section("Low Confidence Matches (\(lowConfidence.count))") {
-                                ForEach(lowConfidence, id: \.segment.url) {
-                                    linkedSegment in
-                                    LowConfidenceSegmentRowView(
-                                        linkedSegment: linkedSegment,
-                                        availableOCFs: project.model.ocfFiles,
-                                        project: project,
-                                        onLinkConfirmed: {
-                                            // Trigger re-linking to apply manual override
-                                            project.performLinkingCallback?()
-                                        }
-                                    )
-                                    .environmentObject(projectManager)
-                                    .tag(linkedSegment.segment.url.path)
-                                }
+                    MatchReviewOutline(
+                        grades: lowConfidence.map(\.segment), unmatchedGrades: segments,
+                        unmatchedOCFs: ocfs, originals: project.model.ocfFiles,
+                        choices: effectiveCandidateChoices,
+                        onChoose: { grade, ocf in
+                            candidateChoices[grade] = ocf
+                            inspectedGrade = grade
+                        },
+                        onInspect: { inspectedGrade = $0 }
+                    )
+                    if !ocfs.isEmpty {
+                        HStack {
+                            Text("Unmatched OCFs (\(ocfs.count))").foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Clear", systemImage: "trash", role: .destructive) {
+                                removeUnmatchedOCFFiles(ocfs)
                             }
-                        }
-
-                        // Unmatched graded segments need attention before unmatched OCFs
-                        if !segments.isEmpty {
-                            Section {
-                                ForEach(segments, id: \.fileName) {
-                                    segment in
-                                    UnmatchedFileRowView(file: segment, type: .segment)
-                                        .tag(segment.fileName)
-                                }
-                            } header: {
-                                Label("Unmatched Segments (\(segments.count))", systemImage: "exclamationmark.triangle.fill")
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(AppTheme.error)
-                                    .monospacedDigit()
-                            }
-                        }
-
-                        // Unmatched OCF Files
-                        if !ocfs.isEmpty {
-                            Section {
-                                ForEach(ocfs, id: \.url) { ocf in
-                                    UnmatchedFileRowView(file: ocf, type: .ocf)
-                                        .tag(ocf.url.path)
-                                }
-                            } header: {
-                                HStack {
-                                    Text(
-                                        "Unmatched OCF Files (\(ocfs.count))"
-                                    )
-                                    .monospacedDigit()
-
-                                    Spacer()
-
-                                    Button("Clear", systemImage: "trash", role: .destructive) {
-                                        removeUnmatchedOCFFiles(ocfs)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .tint(AppTheme.error)
-                                    .textCase(nil)
-                                    .accessibilityLabel("Remove unmatched OCF files")
-                                    .help("Remove the shown unmatched OCF entries from this project. Files on disk are kept.")
-                                    .fixedSize()
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-
-
+                            .help("Remove shown unmatched OCF entries. Files on disk are kept.")
+                        }.padding(.horizontal).padding(.bottom, 8)
                     }
+
                 }
                 .frame(minWidth: 300)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
