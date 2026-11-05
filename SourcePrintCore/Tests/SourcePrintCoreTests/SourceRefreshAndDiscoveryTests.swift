@@ -200,6 +200,79 @@ final class SourceRefreshAndDiscoveryTests: XCTestCase {
         XCTAssertTrue(recovered.unavailable.isEmpty)
     }
 
+    func testPathOverridesDistinguishSameNamedGradesAndSources() async throws {
+        let analyzer = MediaAnalyzer()
+        var grades: [MediaFileInfo] = []
+        var sources: [MediaFileInfo] = []
+        for folder in ["A", "B"] {
+            let grade = try movie("Grades/\(folder)/Camera_grade.mov", seconds: 1)
+            let source = try movie("Sources/\(folder)/Camera.mov")
+            grades.append(try await analyzer.analyzeMediaFile(at: grade, type: .gradedSegment))
+            sources.append(try await analyzer.analyzeMediaFile(at: source, type: .originalCameraFile))
+        }
+        let paths = [SegmentOCFLinker.fileKey(grades[0].url): SegmentOCFLinker.fileKey(sources[1].url),
+                     SegmentOCFLinker.fileKey(grades[1].url): SegmentOCFLinker.fileKey(sources[0].url)]
+        let result = SegmentOCFLinker().linkSegments(grades, withOCFParents: sources, manualPathOverrides: paths)
+        XCTAssertEqual(result.ocfParents[0].children.first?.segment.url, grades[1].url)
+        XCTAssertEqual(result.ocfParents[1].children.first?.segment.url, grades[0].url)
+        XCTAssertTrue(result.ocfParents.flatMap(\.children).allSatisfy { $0.linkMethod == "manual" })
+        let ambiguousLegacy = SegmentOCFLinker().linkSegments(grades, withOCFParents: sources,
+            manualOverrides: ["Camera_grade.mov": "Camera.mov"])
+        XCTAssertTrue(ambiguousLegacy.ocfParents.flatMap(\.children).allSatisfy { $0.linkConfidence == .low })
+    }
+
+    func testFolderPreferenceResolvesOnlyOneValidCandidateInsideFolder() async throws {
+        let analyzer = MediaAnalyzer()
+        let gradeURL = try movie("Grades/Camera_grade.mov", seconds: 1)
+        let grade = try await analyzer.analyzeMediaFile(at: gradeURL, type: .gradedSegment)
+        var sources: [MediaFileInfo] = []
+        for folder in ["Preferred", "Preferred-other", "Backup"] {
+            let url = try movie("Sources/\(folder)/Camera.mov")
+            sources.append(try await analyzer.analyzeMediaFile(at: url, type: .originalCameraFile))
+        }
+        let wrongURL = try movie("Sources/Preferred/WrongTC/Camera.mov", timecode: "02:00:00:00")
+        sources.append(try await analyzer.analyzeMediaFile(at: wrongURL, type: .originalCameraFile))
+        let linker = SegmentOCFLinker()
+        let folder = directory.appendingPathComponent("Sources/Preferred")
+        XCTAssertEqual(linker.validCandidates(for: grade, in: sources).count, 3)
+        XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources, folder: folder)?.url, sources[0].url)
+        XCTAssertNil(linker.preferredCandidate(for: grade, in: sources, folder: nil))
+        XCTAssertNil(linker.preferredCandidate(for: grade, in: sources, folder: directory))
+        let alias = directory.appendingPathComponent("PreferredAlias")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: folder)
+        XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources, folder: alias)?.url, sources[0].url)
+        let duplicateURL = try movie("Sources/Preferred/Nested/Camera.mov")
+        sources.append(try await analyzer.analyzeMediaFile(at: duplicateURL, type: .originalCameraFile))
+        XCTAssertNil(linker.preferredCandidate(for: grade, in: sources, folder: folder))
+        let invalidOverride = linker.linkSegments([grade], withOCFParents: sources,
+            manualPathOverrides: [SegmentOCFLinker.fileKey(grade.url): SegmentOCFLinker.fileKey(wrongURL)])
+        XCTAssertFalse(invalidOverride.ocfParents.flatMap(\.children).contains { $0.linkMethod == "manual" })
+    }
+
+    func testPathConfirmationPersistenceAndSafeLegacyMigration() async throws {
+        let analyzer = MediaAnalyzer()
+        let gradeURL = try movie("Camera_grade.mov", seconds: 1)
+        let sourceURL = try movie("Originals/Camera.mov")
+        let grade = try await analyzer.analyzeMediaFile(at: gradeURL, type: .gradedSegment)
+        let source = try await analyzer.analyzeMediaFile(at: sourceURL, type: .originalCameraFile)
+        var model = ProjectModel(name: "Paths", ocfFiles: [source], segments: [grade],
+            manualLinkOverrides: [grade.fileName: source.fileName], outputDirectory: directory, blankRushDirectory: directory)
+        let decode = { (model: ProjectModel) throws -> ProjectModel in
+            try JSONDecoder().decode(ProjectModel.self, from: JSONEncoder().encode(model))
+        }
+        let migrated = try decode(model)
+        XCTAssertEqual(migrated.manualLinkPaths[SegmentOCFLinker.fileKey(grade.url)], SegmentOCFLinker.fileKey(sourceURL))
+        let secondURL = try movie("Backup/Camera.mov")
+        let second = try await analyzer.analyzeMediaFile(at: secondURL, type: .originalCameraFile)
+        model.ocfFiles.append(second)
+        XCTAssertTrue(try decode(model).manualLinkPaths.isEmpty)
+        model.manualLinkPaths = [SegmentOCFLinker.fileKey(grade.url): SegmentOCFLinker.fileKey(secondURL)]
+        model.preferredOCFFolder = secondURL.deletingLastPathComponent()
+        let restored = try decode(model)
+        XCTAssertEqual(restored.manualLinkPaths, model.manualLinkPaths)
+        XCTAssertEqual(restored.preferredOCFFolder, model.preferredOCFFolder)
+    }
+
     func testSameFilenameRefreshDoesNotUseOtherPathsMetadata() async throws {
         let first = try movie("A/Camera_grade.mov", seconds: 1)
         let second = try movie("B/Camera_grade.mov", seconds: 3)

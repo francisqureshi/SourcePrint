@@ -168,12 +168,12 @@ struct TreeLinkedSegmentRowView: View {
 
             // Unlink (manual links only)
             if linkedSegment.linkMethod == "manual"
-                || project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName)
+                || project.getManualLinkOverride(segmentURL: linkedSegment.segment.url)
                     != nil
             {
                 Button(action: {
                     project.removeManualLinkOverride(
-                        segmentFileName: linkedSegment.segment.fileName)
+                        segmentURL: linkedSegment.segment.url)
                     projectManager.saveProject(project)
                     onUnlink?()
                 }) {
@@ -213,203 +213,60 @@ struct TreeLinkedSegmentRowView: View {
 struct LowConfidenceSegmentRowView: View {
     let linkedSegment: LinkedSegment
     let availableOCFs: [MediaFileInfo]
-    let project: ProjectViewModel
+    @ObservedObject var project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
     var onLinkConfirmed: (() -> Void)?
+    @State private var selectedOCFURL: URL?
 
-    @State private var selectedOCFName: String?
-    @State private var isLinked: Bool = false
-
-    // Check if this is a VFX shot
-    private var isVFXShot: Bool {
-        linkedSegment.segment.isVFX
+    private var candidates: [MediaFileInfo] {
+        SegmentOCFLinker().validCandidates(for: linkedSegment.segment, in: availableOCFs)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "questionmark.circle.fill")
-                    .foregroundColor(.red)
-                    .frame(width: 16)
-
-                Image(systemName: "film")
-                    .foregroundColor(AppTheme.segmentColor)
-                    .frame(width: 16)
-
-                // VFX indicator
-                if isVFXShot {
-                    Image(systemName: "wand.and.stars")
-                        .foregroundColor(.purple)
-                        .frame(width: 16)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(linkedSegment.segment.fileName)
-                            .font(.body)
-
-                        // VFX badge
-                        if isVFXShot {
-                            Text("VFX")
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.appBackgroundBadge)
-                                .foregroundColor(Color.appVfxShot)
-                                .cornerRadius(3)
-                        }
-                    }
-
-                    HStack {
-                        HStack(spacing: 4) {
-                            ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) {
-                                badge in
-                                Text(badge)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(Color.appBackgroundBadge)
-                                    .cornerRadius(3)
-                            }
-                        }
-                        if let startTC = linkedSegment.segment.sourceTimecode,
-                            let endTC = linkedSegment.segment.endTimecode
-                        {
-                            Text("•")
-                            Text("\(startTC) - \(endTC)")
-                                .monospacedDigit()
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                }
-
-                Spacer()
-            }
-
-            // Resolution controls
-            HStack(spacing: 12) {
-                if isLinked, let ocfName = selectedOCFName {
-                    // Show linked status with edit button
-                    HStack(spacing: 8) {
-                        Image(systemName: "link")
-                            .foregroundColor(.green)
-                            .font(.system(size: 12))
-
-                        Text("Linked to: \(ocfName)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Button(action: {
-                            isLinked = false
-                        }) {
-                            Text("Change")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(.blue)
-                    }
-                } else {
-                    // Show dropdown and link button
-                    HStack(spacing: 8) {
-                        Text("Link to:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Picker("", selection: $selectedOCFName) {
-                            Text("Select OCF...").tag(nil as String?)
-                            ForEach(availableOCFs, id: \.fileName) { ocf in
-                                Text(ocf.fileName).tag(ocf.fileName as String?)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 200)
-
-                        Button(action: {
-                            if let ocfName = selectedOCFName {
-                                project.setManualLinkOverride(
-                                    segmentFileName: linkedSegment.segment.fileName,
-                                    ocfFileName: ocfName
-                                )
-                                projectManager.saveProject(project)
-                                isLinked = true
-                                NSLog(
-                                    "📌 Manual link: \(linkedSegment.segment.fileName) → \(ocfName)")
-
-                                // Trigger re-linking to move segment to linked OCF
-                                onLinkConfirmed?()
-                            }
-                        }) {
-                            Text("Confirm Link")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(selectedOCFName == nil)
-                    }
-                }
-            }
-            .padding(.leading, 32)
-        }
-        .onAppear {
-            // Check if there's already a manual override
-            if let existingOverride = project.getManualLinkOverride(
-                segmentFileName: linkedSegment.segment.fileName)
-            {
-                selectedOCFName = existingOverride
-                isLinked = true
+        VStack(alignment: .leading, spacing: 10) {
+            Label(linkedSegment.segment.fileName, systemImage: "questionmark.circle.fill")
+                .font(.headline)
+                .help(linkedSegment.segment.url.path)
+            Text("\(candidates.count) valid candidate\(candidates.count == 1 ? "" : "s") · matching resolution, FPS and timecode range")
+                .font(.caption).foregroundStyle(.secondary)
+            if candidates.isEmpty {
+                Text("No valid candidates. Check the media metadata and link again.")
+                    .font(.caption).foregroundStyle(.red)
             } else {
-                // Suggest best match from available OCFs
-                selectedOCFName = suggestBestMatch()
+                Picker("Valid OCF candidates", selection: $selectedOCFURL) {
+                    ForEach(candidates, id: \.url) { ocf in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(ocf.fileName)
+                            Text(ocf.url.deletingLastPathComponent().path)
+                                .font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        .help(ocf.url.path)
+                        .tag(ocf.url as URL?)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
+            }
+            HStack {
+                Spacer()
+                Button("Confirm Link") {
+                    guard let url = selectedOCFURL,
+                          project.setManualLinkOverride(segmentURL: linkedSegment.segment.url, ocfURL: url) else { return }
+                    projectManager.saveProject(project)
+                    onLinkConfirmed?()
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small)
+                .disabled(!candidates.contains(where: { $0.url == selectedOCFURL }))
             }
         }
-    }
-
-    private func suggestBestMatch() -> String? {
-        // Find OCF with matching resolution, frame rate, and filename similarity
-        guard let segmentRes = linkedSegment.segment.effectiveDisplayResolution,
-            let segmentFR = linkedSegment.segment.frameRate
-        else {
-            return availableOCFs.first?.fileName
+        .padding(.vertical, 6)
+        .task(id: candidates.map { $0.url.path }.joined(separator: "|") + (project.model.preferredOCFFolder?.path ?? "")) {
+            let existing = project.getManualLinkOverride(segmentURL: linkedSegment.segment.url)
+            selectedOCFURL = candidates.first(where: { $0.url == existing })?.url
+                ?? SegmentOCFLinker().preferredCandidate(for: linkedSegment.segment, in: availableOCFs,
+                    folder: project.model.preferredOCFFolder)?.url
         }
-
-        let segmentNameLower = linkedSegment.segment.fileNameLower
-
-        // First try: Look for filename match + tech specs match
-        let filenameMatch = availableOCFs.first { ocf in
-            guard let ocfRes = ocf.effectiveDisplayResolution,
-                let ocfFR = ocf.frameRate
-            else {
-                return false
-            }
-
-            let ocfBaseName = (ocf.fileName as NSString).deletingPathExtension
-            let ocfBaseNameLower = ocfBaseName.lowercased()
-            let hasFilenameMatch = segmentNameLower.contains(ocfBaseNameLower)
-
-            return hasFilenameMatch && segmentRes.width == ocfRes.width
-                && segmentRes.height == ocfRes.height
-                && FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
-        }
-
-        if let match = filenameMatch {
-            return match.fileName
-        }
-
-        // Second try: Just tech specs match (no filename requirement)
-        let techMatch = availableOCFs.first { ocf in
-            guard let ocfRes = ocf.effectiveDisplayResolution,
-                let ocfFR = ocf.frameRate
-            else {
-                return false
-            }
-
-            return segmentRes.width == ocfRes.width && segmentRes.height == ocfRes.height
-                && FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
-        }
-
-        return techMatch?.fileName ?? availableOCFs.first?.fileName
     }
 }
 

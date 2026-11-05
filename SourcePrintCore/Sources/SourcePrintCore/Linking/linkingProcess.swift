@@ -95,7 +95,25 @@ public class SegmentOCFLinker {
         return isSegmentInOCFRange(segment: segment, ocf: ocf)
     }
     
-    public func linkSegments(_ segments: [MediaFileInfo], withOCFParents importedOCFs: [MediaFileInfo], manualOverrides: [String: String] = [:], requireTimecodeMatch: Bool = false) -> LinkingResult {
+    public static func fileKey(_ url: URL) -> String { url.standardizedFileURL.path }
+
+    public func validCandidates(for segment: MediaFileInfo, in files: [MediaFileInfo]) -> [MediaFileInfo] {
+        ProjectOperations.uniqueMediaFiles(files)
+            .filter { matchesForDiscovery(segment: segment, ocf: $0) }
+            .sorted { Self.fileKey($0.url) < Self.fileKey($1.url) }
+    }
+
+    /// A preference resolves a segment only when exactly one valid candidate lies inside the folder.
+    public func preferredCandidate(for segment: MediaFileInfo, in files: [MediaFileInfo], folder: URL?) -> MediaFileInfo? {
+        let candidates = validCandidates(for: segment, in: files).filter { file in
+            guard let folder else { return true }
+            let root = folder.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+            return Array(file.url.standardizedFileURL.resolvingSymlinksInPath().pathComponents.prefix(root.count)) == root
+        }
+        return candidates.count == 1 ? candidates[0] : nil
+    }
+
+    public func linkSegments(_ segments: [MediaFileInfo], withOCFParents importedOCFs: [MediaFileInfo], manualOverrides: [String: String] = [:], manualPathOverrides: [String: String] = [:], requireTimecodeMatch: Bool = false) -> LinkingResult {
         let ocfs = ProjectOperations.uniqueMediaFiles(importedOCFs)
         print("🔗 Linking \(segments.count) segments with \(ocfs.count) OCF parent files...")
         if !manualOverrides.isEmpty {
@@ -116,9 +134,16 @@ public class SegmentOCFLinker {
             let eligibleOCFs = requireTimecodeMatch
                 ? ocfs.filter { matchesForDiscovery(segment: segment, ocf: $0) }
                 : ocfs
-            // Check for manual override first
-            if let manualOCFName = manualOverrides[segment.fileName],
-               let manualOCF = eligibleOCFs.first(where: { $0.fileName == manualOCFName }) {
+            // Path overrides are validated again; legacy names are safe only when both names are unique.
+            var chosenPath = manualPathOverrides[Self.fileKey(segment.url)]
+            if chosenPath == nil,
+               segments.filter({ $0.fileName == segment.fileName }).count == 1,
+               let name = manualOverrides[segment.fileName] {
+                let named = ocfs.filter { $0.fileName == name }
+                if named.count == 1 { chosenPath = Self.fileKey(named[0].url) }
+            }
+            if let chosenPath,
+               let manualOCF = validCandidates(for: segment, in: eligibleOCFs).first(where: { Self.fileKey($0.url) == chosenPath }) {
                 // Manual override exists - use it with high confidence
                 let linkedSegment = LinkedSegment(
                     segment: segment,

@@ -106,7 +106,7 @@ struct LinkingTab: View {
             let result = linker.linkSegments(
                 project.model.segments,
                 withOCFParents: project.model.ocfFiles,
-                manualOverrides: project.model.manualLinkOverrides
+                manualPathOverrides: project.model.manualLinkPaths
             )
 
             await MainActor.run {

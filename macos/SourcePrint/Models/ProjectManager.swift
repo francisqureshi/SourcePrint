@@ -545,7 +545,7 @@ class ProjectManager: ObservableObject {
         let result = linker.linkSegments(
             onlineSegments,
             withOCFParents: viewModel.model.ocfFiles,
-            manualOverrides: viewModel.model.manualLinkOverrides
+            manualPathOverrides: viewModel.model.manualLinkPaths
         )
 
         viewModel.updateLinkingResult(result)

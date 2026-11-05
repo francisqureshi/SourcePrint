@@ -51,6 +51,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
                         model.segments[index] = replacement
                         if metadataChanged {
                             model.manualLinkOverrides.removeValue(forKey: original.fileName)
+                            model.manualLinkPaths.removeValue(forKey: SegmentOCFLinker.fileKey(original.url))
                         }
                         changed = true
                     }
@@ -69,7 +70,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
                 if (changed && model.linkingResult != nil) || relinkAfterMediaRefresh {
                     relinkAfterMediaRefresh = false
                     updateLinkingResult(SegmentOCFLinker().linkSegments(model.segments,
-                        withOCFParents: model.ocfFiles, manualOverrides: model.manualLinkOverrides))
+                        withOCFParents: model.ocfFiles, manualPathOverrides: model.manualLinkPaths))
                 }
             }
             if changed || previousNotice != mediaRefreshNotice { model.updateModified() }
@@ -244,20 +245,26 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     // MARK: - Manual Link Overrides
 
     /// Add or update a manual link override for a segment
-    func setManualLinkOverride(segmentFileName: String, ocfFileName: String) {
-        model.manualLinkOverrides[segmentFileName] = ocfFileName
+    @discardableResult
+    func setManualLinkOverride(segmentURL: URL, ocfURL: URL) -> Bool {
+        guard let segment = model.segments.first(where: { $0.url == segmentURL }),
+              SegmentOCFLinker().validCandidates(for: segment, in: model.ocfFiles).contains(where: { $0.url == ocfURL }) else { return false }
+        model.manualLinkPaths[SegmentOCFLinker.fileKey(segmentURL)] = SegmentOCFLinker.fileKey(ocfURL)
+        model.manualLinkOverrides.removeValue(forKey: segment.fileName)
+        model.updateModified()
+        return true
+    }
+
+    func removeManualLinkOverride(segmentURL: URL) {
+        model.manualLinkPaths.removeValue(forKey: SegmentOCFLinker.fileKey(segmentURL))
+        if let segment = model.segments.first(where: { $0.url == segmentURL }) {
+            model.manualLinkOverrides.removeValue(forKey: segment.fileName)
+        }
         model.updateModified()
     }
 
-    /// Remove a manual link override
-    func removeManualLinkOverride(segmentFileName: String) {
-        model.manualLinkOverrides.removeValue(forKey: segmentFileName)
-        model.updateModified()
-    }
-
-    /// Get the manual override for a segment, if any
-    func getManualLinkOverride(segmentFileName: String) -> String? {
-        return model.manualLinkOverrides[segmentFileName]
+    func getManualLinkOverride(segmentURL: URL) -> URL? {
+        model.manualLinkPaths[SegmentOCFLinker.fileKey(segmentURL)].map { URL(fileURLWithPath: $0) }
     }
 
     // Build once when loading saved history, then index each completed render.

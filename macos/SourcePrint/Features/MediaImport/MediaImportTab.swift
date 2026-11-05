@@ -228,7 +228,7 @@ struct MediaImportTab: View {
             let matches = discovery.matches
             project.addOCFFiles(matches)
             let result = SegmentOCFLinker().linkSegments(project.model.segments,
-                withOCFParents: project.model.ocfFiles, manualOverrides: project.model.manualLinkOverrides, requireTimecodeMatch: true)
+                withOCFParents: project.model.ocfFiles, manualPathOverrides: project.model.manualLinkPaths, requireTimecodeMatch: true)
             project.updateLinkingResult(result)
             projectManager.saveProject(project)
             importNotice = "Added \(matches.count) matching OCF file(s). \(result.unmatchedSegments.count) graded clip(s) still unmatched. Review uncertain matches in Linking."

@@ -308,6 +308,59 @@ struct LinkingResultsView: View {
         .frame(width: 820, height: 420)
     }
 
+    private var bulkConfirmationPairs: [(segment: URL, ocf: URL)] {
+        lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }.compactMap { child in
+            guard let candidate = SegmentOCFLinker().preferredCandidate(for: child.segment,
+                in: project.model.ocfFiles, folder: project.model.preferredOCFFolder) else { return nil }
+            return (child.segment.url, candidate.url)
+        }
+    }
+
+    private func choosePreferredOCFFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Prefer OCFs from this folder"
+        panel.prompt = "Use Folder"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = project.model.preferredOCFFolder
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        project.model.preferredOCFFolder = folder
+        project.updateModified()
+        projectManager.saveProject(project)
+    }
+
+    private var bulkConfirmationControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button("Prefer Folder…", action: choosePreferredOCFFolder)
+                if project.model.preferredOCFFolder != nil {
+                    Button("Clear") {
+                        project.model.preferredOCFFolder = nil
+                        project.updateModified()
+                        projectManager.saveProject(project)
+                    }
+                }
+                Spacer()
+                Button("Confirm All (\(bulkConfirmationPairs.count))") {
+                    let pairs = bulkConfirmationPairs
+                    for pair in pairs {
+                        project.setManualLinkOverride(segmentURL: pair.segment, ocfURL: pair.ocf)
+                    }
+                    projectManager.saveProject(project)
+                    project.performLinkingCallback?()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(bulkConfirmationPairs.isEmpty)
+            }
+            if let folder = project.model.preferredOCFFolder {
+                Text(folder.path).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(folder.path)
+            }
+            Text("Confirm All includes only shown clips with exactly one valid candidate\(project.model.preferredOCFFolder == nil ? "" : " in the preferred folder"). Other matches stay unconfirmed.")
+                .font(.caption).foregroundStyle(.secondary)
+        }.padding(.horizontal)
+    }
+
     private func cancelCurrentOperation() {
         NSLog("🛑 Cancel requested")
 
@@ -922,6 +975,8 @@ struct LinkingResultsView: View {
                         .textFieldStyle(.roundedBorder)
                         .padding(.horizontal)
 
+                    if !lowConfidenceSegments.isEmpty { bulkConfirmationControls }
+
                     let segments = (linkingResult?.unmatchedSegments ?? []).filter { matchesUnmatchedSearch($0) }
                     let ocfs = (linkingResult?.unmatchedOCFs ?? []).filter { matchesUnmatchedSearch($0) }
                     let lowConfidence = lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }
@@ -929,7 +984,7 @@ struct LinkingResultsView: View {
                         // Low Confidence Matches
                         if !lowConfidence.isEmpty {
                             Section("Low Confidence Matches (\(lowConfidence.count))") {
-                                ForEach(lowConfidence, id: \.segment.fileName) {
+                                ForEach(lowConfidence, id: \.segment.url) {
                                     linkedSegment in
                                     LowConfidenceSegmentRowView(
                                         linkedSegment: linkedSegment,
@@ -941,7 +996,7 @@ struct LinkingResultsView: View {
                                         }
                                     )
                                     .environmentObject(projectManager)
-                                    .tag(linkedSegment.segment.fileName)
+                                    .tag(linkedSegment.segment.url.path)
                                 }
                             }
                         }
@@ -965,9 +1020,9 @@ struct LinkingResultsView: View {
                         // Unmatched OCF Files
                         if !ocfs.isEmpty {
                             Section {
-                                ForEach(ocfs, id: \.fileName) { ocf in
+                                ForEach(ocfs, id: \.url) { ocf in
                                     UnmatchedFileRowView(file: ocf, type: .ocf)
-                                        .tag(ocf.fileName)
+                                        .tag(ocf.url.path)
                                 }
                             } header: {
                                 HStack {
