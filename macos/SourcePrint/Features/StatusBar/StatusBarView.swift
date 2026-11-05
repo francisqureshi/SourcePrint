@@ -151,8 +151,6 @@ struct StatusBarView: View {
                 Image(systemName: "film.stack")
             case .rendering:
                 Image(systemName: "gearshape.circle")
-            case .watchFolderImport:
-                Image(systemName: "folder.badge.plus")
             }
         }
     }

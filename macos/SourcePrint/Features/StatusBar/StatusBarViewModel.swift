@@ -15,7 +15,6 @@ enum OperationType: Equatable {
     case linking
     case generatingBlankRush
     case rendering
-    case watchFolderImport
 }
 
 /// Active tab context for showing appropriate buttons
@@ -223,15 +222,6 @@ final class StatusBarViewModel {
             timeRemaining: nil,
             additionalInfo: nil
         )
-    }
-
-    /// Update watch folder auto-import progress
-    func updateWatchFolderProgress(fileCount: Int) {
-        currentOperation = .watchFolderImport
-        statusText = "Auto-importing \(fileCount) file\(fileCount == 1 ? "" : "s")..."
-        isIndeterminate = true
-
-        detailedInfo = nil
     }
 
     /// Mark operation as complete

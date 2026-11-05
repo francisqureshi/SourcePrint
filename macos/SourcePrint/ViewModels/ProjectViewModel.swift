@@ -13,7 +13,7 @@ import SwiftUI
 
 /// SwiftUI-reactive ViewModel wrapping the pure ProjectModel from Core
 /// Handles all UI state management and delegates business logic to Core services
-class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDelegate {
+class ProjectViewModel: ObservableObject, Codable, Identifiable {
 
     @Published var isPublishing = false
     @Published var mediaRefreshNotice: String?
@@ -105,21 +105,14 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     /// OCF card expansion state (UI-only)
     @Published var ocfCardExpansionState: [String: Bool] = [:]
 
-    /// Watch folder settings (UI-only)
-    @Published var watchFolderSettings: WatchFolderSettings = WatchFolderSettings() {
-        didSet {
-            updateWatchFolderMonitoring()
-        }
-    }
+    /// Legacy persistence only. Folder monitoring has been retired.
+    var watchFolderSettings: WatchFolderSettings = WatchFolderSettings()
 
     /// Set to true by the Link Files button to trigger linking once LinkingTab appears
     var pendingLinkRequest: Bool = false
 
     /// Callback for manual linking (set by LinkingTab)
     var performLinkingCallback: (() -> Void)?
-
-    /// Watch folder service instance
-    private var watchFolderService: WatchFolderService?
 
     // MARK: - Computed Properties (Delegate to Model)
 
@@ -434,241 +427,5 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
         }
 
         model.updateModified()
-    }
-
-    // MARK: - WatchFolderDelegate
-
-    func watchFolder(_ service: WatchFolderService, didDetectNewFiles files: [URL], isVFX: Bool) {
-        // Process detected files using AutoImportService
-        let result = AutoImportService.processDetectedFiles(
-            files: files,
-            isVFX: isVFX,
-            existingSegments: model.segments,
-            offlineFiles: model.offlineMediaFiles,
-            offlineMetadata: model.offlineFileMetadata,
-            trackedSizes: model.segmentFileSizes,
-            linkingResult: model.linkingResult,
-            autoImportEnabled: watchFolderSettings.autoImportEnabled
-        )
-
-        // Apply state changes
-        applyAutoImportResult(result)
-
-        // Import new files if any
-        if !result.filesToImport.isEmpty {
-            Task {
-                let mediaFiles = await analyzeDetectedFiles(urls: result.filesToImport, isVFX: isVFX)
-                await MainActor.run {
-                    addSegments(mediaFiles)
-                    NSLog("✅ Auto-imported %d new %@ files from watch folder", mediaFiles.count, isVFX ? "VFX" : "grade")
-                }
-            }
-        }
-    }
-
-    func watchFolder(_ service: WatchFolderService, didDetectDeletedFiles fileNames: [String], isVFX: Bool) {
-        let result = AutoImportService.processDeletedFiles(
-            fileNames: fileNames,
-            isVFX: isVFX,
-            existingSegments: model.segments,
-            trackedSizes: model.segmentFileSizes,
-            linkingResult: model.linkingResult
-        )
-
-        applyAutoImportResult(result)
-    }
-
-    func watchFolder(_ service: WatchFolderService, didDetectModifiedFiles fileNames: [String], isVFX: Bool) {
-        let result = AutoImportService.processModifiedFiles(
-            fileNames: fileNames,
-            isVFX: isVFX,
-            existingSegments: model.segments,
-            linkingResult: model.linkingResult,
-            offlineMediaFiles: model.offlineMediaFiles,
-            offlineMetadata: model.offlineFileMetadata
-        )
-
-        applyAutoImportResult(result)
-    }
-
-    func watchFolder(_ service: WatchFolderService, didEncounterError error: WatchFolderError) {
-        NSLog("⚠️ Watch folder error: %@", error.localizedDescription)
-    }
-
-    /// Apply AutoImportResult to model
-    private func applyAutoImportResult(_ result: AutoImportResult) {
-        // Handle returning files first (remove from offline)
-        for fileName in result.returningUnchanged {
-            model.offlineMediaFiles.remove(fileName)
-            model.offlineFileMetadata.removeValue(forKey: fileName)
-        }
-
-        // Add new offline files
-        for fileName in result.offlineFiles {
-            if !model.offlineMediaFiles.contains(fileName) {
-                model.offlineMediaFiles.insert(fileName)
-            }
-        }
-
-        // Add new offline metadata
-        for (fileName, metadata) in result.offlineMetadata where metadata != nil {
-            model.offlineFileMetadata[fileName] = metadata
-        }
-
-        // Update modification dates
-        for (fileName, date) in result.modificationDates {
-            model.segmentModificationDates[fileName] = date
-        }
-
-        // Update file sizes
-        for (fileName, size) in result.updatedFileSizes {
-            model.segmentFileSizes[fileName] = size
-        }
-
-        // Update print status for affected OCFs
-        for (ocfFileName, update) in result.printStatusUpdates {
-            if update.needsReprint {
-                let lastPrintDate = update.lastPrintDate ?? Date()
-                let reason: ReprintReason = update.reason == "segmentOffline" ? .segmentOffline : .segmentModified
-                model.printStatus[ocfFileName] = .needsReprint(lastPrintDate: lastPrintDate, reason: reason)
-            } else if update.reason == "segmentReturned" {
-                // Segment returned unchanged - check current status and revert if it was offline
-                if case .needsReprint(let lastPrintDate, let reason) = model.printStatus[ocfFileName] {
-                    if reason == .segmentOffline {
-                        // Revert to printed status since the offline segment is back and unchanged
-                        let outputPath = model.outputDirectory.appendingPathComponent(ocfFileName)
-                        model.printStatus[ocfFileName] = .printed(date: lastPrintDate, outputURL: outputPath)
-                        NSLog("✅ Reverted print status for %@ - segment returned unchanged", ocfFileName)
-                    }
-                }
-            }
-        }
-
-        // Trigger UI update if changes were made
-        if result.modifiedFiles.count > 0 || result.offlineFiles.count > 0 || !result.printStatusUpdates.isEmpty || !result.returningUnchanged.isEmpty {
-            objectWillChange.send()
-        }
-    }
-
-    // MARK: - Watch Folder Lifecycle
-
-    private func updateWatchFolderMonitoring() {
-        NSLog("🔄 Watch folder settings changed: enabled=%@", watchFolderSettings.isEnabled ? "true" : "false")
-
-        if watchFolderSettings.isEnabled {
-            startWatchFolderIfNeeded()
-        } else {
-            stopWatchFolder()
-        }
-    }
-
-    private func startWatchFolderIfNeeded() {
-        let gradePath = watchFolderSettings.primaryGradeFolder?.path
-        let vfxPath = watchFolderSettings.vfxFolder?.path
-
-        guard gradePath != nil || vfxPath != nil else {
-            NSLog("⚠️ No watch folder paths specified")
-            return
-        }
-
-        NSLog("🚀 Starting watch folder monitoring...")
-        if let gradePath = gradePath {
-            NSLog("📁 Grade folder: %@", gradePath)
-        }
-        if let vfxPath = vfxPath {
-            NSLog("🎬 VFX folder: %@", vfxPath)
-        }
-
-        watchFolderService = WatchFolderService(gradePath: gradePath, vfxPath: vfxPath)
-        watchFolderService?.delegate = self
-
-        // Check for files that changed while app was closed BEFORE starting monitor
-        checkForChangedFilesOnStartup(gradePath: gradePath, vfxPath: vfxPath)
-    }
-
-    /// Check if any already-imported files in watch folders have changed while app was closed
-    private func checkForChangedFilesOnStartup(gradePath: String?, vfxPath: String?) {
-        guard let service = watchFolderService else { return }
-
-        // Process startup changes using AutoImportService
-        Task {
-            let (modificationsResult, newFiles) = await AutoImportService.processStartupChanges(
-                service: service,
-                existingSegments: model.segments,
-                trackedSizes: model.segmentFileSizes,
-                linkingResult: model.linkingResult,
-                autoImportEnabled: watchFolderSettings.autoImportEnabled
-            )
-
-            // Apply modifications on main actor
-            await MainActor.run {
-                applyAutoImportResult(modificationsResult)
-            }
-
-            // Auto-import new grade files
-            if !newFiles.gradeFiles.isEmpty && watchFolderSettings.autoImportEnabled {
-                NSLog("🎬 Auto-importing %d new grade files from startup scan...", newFiles.gradeFiles.count)
-                let gradeMediaFiles = await analyzeDetectedFiles(urls: newFiles.gradeFiles, isVFX: false)
-                await MainActor.run {
-                    addSegments(gradeMediaFiles)
-                    NSLog("✅ Startup import complete: %d grade files", gradeMediaFiles.count)
-                }
-            }
-
-            // Auto-import new VFX files
-            if !newFiles.vfxFiles.isEmpty && watchFolderSettings.autoImportEnabled {
-                NSLog("🎬 Auto-importing %d new VFX files from startup scan...", newFiles.vfxFiles.count)
-                let vfxMediaFiles = await analyzeDetectedFiles(urls: newFiles.vfxFiles, isVFX: true)
-                await MainActor.run {
-                    addSegments(vfxMediaFiles)
-                    NSLog("✅ Startup import complete: %d VFX files", vfxMediaFiles.count)
-                }
-            }
-
-            // NOW start the file monitor (after startup import FULLY completes)
-            await MainActor.run {
-                service.startMonitoring()
-                NSLog("✅ Watch folder monitoring active")
-            }
-        }
-    }
-
-    private func stopWatchFolder() {
-        watchFolderService?.stopMonitoring()
-        watchFolderService = nil
-    }
-
-    /// Analyze detected video files for import
-    private func analyzeDetectedFiles(urls: [URL], isVFX: Bool) async -> [MediaFileInfo] {
-        NSLog("🔍 Analyzing %d detected %@ files...", urls.count, isVFX ? "VFX" : "grade")
-
-        // Process files serially to avoid potential MediaAnalyzer threading issues
-        var results: [MediaFileInfo] = []
-
-        for url in urls {
-            do {
-                NSLog("📹 Analyzing: %@", url.lastPathComponent)
-                let mediaFile = try await MediaAnalyzer().analyzeMediaFile(
-                    at: url,
-                    type: .gradedSegment
-                )
-
-                // Set VFX flag on the media file if it's from VFX folder
-                if isVFX {
-                    var vfxMediaFile = mediaFile
-                    vfxMediaFile.isVFXShot = true
-                    results.append(vfxMediaFile)
-                } else {
-                    results.append(mediaFile)
-                }
-
-                NSLog("✅ Analyzed: %@", url.lastPathComponent)
-            } catch {
-                NSLog("❌ Failed to analyze watch folder file %@: %@", url.lastPathComponent, error.localizedDescription)
-            }
-        }
-
-        NSLog("✅ Analysis complete: %d/%d files analyzed successfully", results.count, urls.count)
-        return results
     }
 }
