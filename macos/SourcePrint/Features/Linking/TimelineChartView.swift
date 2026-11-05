@@ -44,7 +44,7 @@ struct TimelineChartView: View {
                         y: .value("Track", 1)
                     )
                     .foregroundStyle(
-                        isSelected ? Color.red : Color.appSegment
+                        isSelected ? Color.appAccent : Color.appSegment
                     )
                     .lineStyle(StrokeStyle(lineWidth: trackHeight, lineCap: .butt))
                 }
@@ -59,7 +59,7 @@ struct TimelineChartView: View {
                         xEnd: .value("End", placement.endFrame),
                         y: .value("Track", 2)
                     )
-                    .foregroundStyle(isSelected ? Color.red : Color.appVfxShot)
+                    .foregroundStyle(isSelected ? Color.appAccent : Color.appVfxShot)
                     .lineStyle(StrokeStyle(lineWidth: trackHeight, lineCap: .butt))
                 }
 

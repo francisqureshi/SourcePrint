@@ -11,7 +11,7 @@ struct StatusBarView: View {
     let viewModel: StatusBarViewModel
 
     // Themed green for progress bars
-    private let accentColor = AppTheme.success
+    private let accentColor = AppTheme.accent
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,7 +35,7 @@ struct StatusBarView: View {
             // Left: Icon + Status Text
             HStack(spacing: 8) {
                 operationIcon
-                    .foregroundColor(accentColor)
+                    .foregroundColor(viewModel.currentOperation == .idle ? AppTheme.success : accentColor)
                     .imageScale(.medium)
 
                 Text(viewModel.statusText)

@@ -49,7 +49,7 @@ public class FileMonitorWatchFolder {
     private var lastKnownFileSizes: [String: Int64] = [:]  // Track file sizes to detect changes
 
     /// Video file extensions to monitor
-    private let videoExtensions = ["mov", "mp4", "m4v", "mxf", "prores"]
+    private let videoExtensions = ["mov", "mp4", "m4v", "mxf"]
 
     public init() {}
 

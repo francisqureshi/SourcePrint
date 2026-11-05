@@ -410,7 +410,7 @@
        278 -  
        279 -    2. ProjectManager.swift - Project lifecycle management
        280 -  
-       281 -    - File-based persistence with .prores project files
+       281 -    - File-based persistence with .w2 project files
        282 -    - Recent projects tracking (5 most recent)
        283 -    - Auto-save functionality
        284 -    - Core engine integration for import, linking, and blank rush workflows
@@ -566,7 +566,7 @@
        427 -  - **Xcode Canvas Previews**: UI components can be developed and previewed independently
        428 -  - **Modular Architecture**: SwiftUI views separated into logical directories for maintainability  
        429 -  - **Professional Theming**: System appearance integration with unified toolbar styling
-       430 -  - **File Type Associations**: `.prores` project files and video format support registered
+       430 -  - **File Type Associations**: `.w2` project files and video format support registered
        431 -  
        432 -  ### Production Ready Features
        433 -  - ✅ **Finder-like Sidebar**: Project navigation matching macOS conventions

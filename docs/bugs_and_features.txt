@@ -47,7 +47,7 @@ Watch Folder Feature Set (All Working):
   ✅ Delete multiple files → mark all offline
   ✅ QuickLook files → no crash
   ✅ Hidden file filtering (. prefix ignored)
-  ✅ Video extension filtering (.mov, .mp4, .m4v, .mxf, .prores)
+  ✅ Video extension filtering (.mov, .mp4, .m4v, .mxf)
   ✅ VFX vs grade folder distinction
 
 Technical Details:

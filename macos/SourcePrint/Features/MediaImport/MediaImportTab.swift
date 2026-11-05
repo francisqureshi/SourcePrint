@@ -16,6 +16,7 @@ struct MediaImportTab: View {
     @Binding var selectedTab: ProjectTab
     @State private var importingOCF = false
     @State private var isAnalyzing = false
+    @State private var importNotice: String?
     @State private var showRemoveOfflineConfirmation = false
     
     @State private var confirmDuplicateCleanup = false
@@ -74,6 +75,19 @@ struct MediaImportTab: View {
                 .padding(.horizontal)
             }
 
+            if let importNotice {
+                HStack(alignment: .top) {
+                    Label(importNotice, systemImage: "info.circle")
+                        .font(.callout)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button { self.importNotice = nil } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain)
+                        .help("Dismiss import result")
+                }
+                .padding(.horizontal)
+            }
+
             // Media Tables
             HSplitView {
                 // OCF Files Table
@@ -91,7 +105,8 @@ struct MediaImportTab: View {
                         importingOCF = true
                         showImportPicker()
                     },
-                    isAnalyzing: isAnalyzing
+                    isAnalyzing: isAnalyzing,
+                    onDropFiles: { importDroppedFiles($0, isOCF: true) }
                 )
                 .frame(minWidth: 400)
 
@@ -113,7 +128,8 @@ struct MediaImportTab: View {
                         importingOCF = false
                         showImportPicker()
                     },
-                    isAnalyzing: isAnalyzing
+                    isAnalyzing: isAnalyzing,
+                    onDropFiles: { importDroppedFiles($0, isOCF: false) }
                 )
                 .frame(minWidth: 400)
             }
@@ -161,67 +177,57 @@ struct MediaImportTab: View {
         panel.title = importingOCF ? "Import OCF Files or Folders" : "Import Segment Files or Folders"
         panel.message = "Select video files and/or folders. Folders will be scanned recursively for video files."
         
-        if panel.runModal() == .OK {
-            let selectedURLs = panel.urls
-            guard !selectedURLs.isEmpty else { return }
-            
-            // Automatically handle mixed selection of files and folders
-            Task {
-                var allVideoFiles: [URL] = []
-                
-                for url in selectedURLs {
-                    var isDirectory: ObjCBool = false
-                    if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) {
-                        if isDirectory.boolValue {
-                            // It's a folder - scan recursively
-                            let folderVideoFiles = await scanFolderForVideoFiles(url)
-                            allVideoFiles.append(contentsOf: folderVideoFiles)
+        let isOCF = importingOCF
+        if panel.runModal() == .OK, !panel.urls.isEmpty, !isAnalyzing {
+            isAnalyzing = true
+            Task { await importLocations(panel.urls, isOCF: isOCF) }
+        }
+    }
+
+    private func importDroppedFiles(_ providers: [NSItemProvider], isOCF: Bool) -> Bool {
+        guard !isAnalyzing, !providers.isEmpty else { return false }
+        isAnalyzing = true
+        importNotice = nil
+        Task {
+            var urls: [URL] = []
+            for provider in providers {
+                let url: URL? = await withCheckedContinuation { continuation in
+                    provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                        if let url = item as? URL {
+                            continuation.resume(returning: url)
+                        } else if let data = item as? Data {
+                            continuation.resume(returning: URL(dataRepresentation: data, relativeTo: nil))
                         } else {
-                            // It's a file - add directly if it's a video file
-                            let fileExtension = url.pathExtension.lowercased()
-                            let videoExtensions = ["mov", "mp4", "m4v", "mxf", "prores"]
-                            if videoExtensions.contains(fileExtension) {
-                                allVideoFiles.append(url)
-                            }
+                            continuation.resume(returning: nil)
                         }
                     }
                 }
-                
-                await MainActor.run {
-                    if !allVideoFiles.isEmpty {
-                        importMediaFiles(urls: allVideoFiles, isOCF: importingOCF)
-                    } else {
-                        print("No video files found in selection")
-                    }
-                }
+                if let url, url.isFileURL { urls.append(url) }
             }
+            await importLocations(urls, isOCF: isOCF, unreadableDrops: providers.count - urls.count)
         }
+        return true
     }
-    
-    private func scanFolderForVideoFiles(_ folderURL: URL) async -> [URL] {
-        return await withTaskGroup(of: [URL].self) { taskGroup in
-            taskGroup.addTask {
-                await self.getAllVideoFiles(from: folderURL)
-            }
-            
-            var allFiles: [URL] = []
-            for await files in taskGroup {
-                allFiles.append(contentsOf: files)
-            }
-            return allFiles
+
+    private func importLocations(_ locations: [URL], isOCF: Bool, unreadableDrops: Int = 0) async {
+        importNotice = nil
+        statusBarVM.updateImportProgress(currentFile: 0, totalFiles: 0, fileName: "Scanning media…")
+        let discovery = await Task.detached(priority: .userInitiated) {
+            await MediaImportSelection.discover(locations)
+        }.value
+        var notices = discovery.notices
+        if unreadableDrops > 0 { notices.append("Could not read \(unreadableDrops) dropped item(s).") }
+        guard !discovery.files.isEmpty else {
+            isAnalyzing = false
+            let message = (["No new supported media to import."] + notices).joined(separator: " ")
+            importNotice = message
+            statusBarVM.completeOperation(summary: message)
+            return
         }
+        importMediaFiles(urls: discovery.files, isOCF: isOCF, notices: notices)
     }
-    
-    private func getAllVideoFiles(from directoryURL: URL) async -> [URL] {
-        do {
-            return try await VideoFileDiscovery.discoverVideoFiles(in: directoryURL)
-        } catch {
-            print("⚠️ Failed to discover video files: \(error)")
-            return []
-        }
-    }
-    
-    private func importMediaFiles(urls: [URL], isOCF: Bool) {
+
+    private func importMediaFiles(urls: [URL], isOCF: Bool, notices: [String] = []) {
         isAnalyzing = true
 
         statusBarVM.updateImportProgress(
@@ -249,6 +255,12 @@ struct MediaImportTab: View {
                 let skipped = mediaFiles.count - added
                 var summary = "Imported \(added) \(isOCF ? "OCF" : "segment") file\(added == 1 ? "" : "s")"
                 if skipped > 0 { summary += " · Skipped \(skipped) duplicate\(skipped == 1 ? "" : "s")" }
+                let analyzedURLs = Set(mediaFiles.map { $0.url.standardizedFileURL })
+                let failed = urls.filter { !analyzedURLs.contains($0.standardizedFileURL) }
+                if !failed.isEmpty {
+                    summary += " · Could not read \(failed.count) file(s): " + failed.prefix(3).map(\.lastPathComponent).joined(separator: ", ")
+                }
+                importNotice = ([summary] + notices).joined(separator: " ")
                 statusBarVM.completeOperation(summary: summary)
                 NSLog("%@", summary)
             }

@@ -472,8 +472,7 @@
        153 +      
        154 +      // Check if file is a supported video format
        155 +      private func isVideoFile(_ url: URL) -> Bool {
-       156 +          let videoExtensions = ["mov", "mp4", "mxf", "avi", "mkv", "m4v", 
-           + "prores"]
+       156 +          let videoExtensions = ["mov", "mp4", "mxf", "avi", "mkv", "m4v"]
        157 +          let ext = url.pathExtension.lowercased()
        158 +          return videoExtensions.contains(ext)
        159 +      }

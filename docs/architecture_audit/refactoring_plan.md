@@ -247,7 +247,7 @@ import Foundation
 public class VideoFileDiscovery {
 
     // Supported video file extensions
-    public static let videoExtensions: Set<String> = ["mov", "mp4", "m4v", "mxf", "avi", "mkv", "prores"]
+    public static let videoExtensions: Set<String> = ["mov", "mp4", "m4v", "mxf", "avi", "mkv"]
 
     /// Recursively discover all video files in a directory
     ///
@@ -396,7 +396,7 @@ private func getFileModificationDate(for url: URL) -> Date? {
 // Before (lines 183-211):
 private func getAllVideoFiles(from directoryURL: URL) async -> [URL] {
     var videoFiles: [URL] = []
-    let videoExtensions = ["mov", "mp4", "m4v", "mxf", "prores"]
+    let videoExtensions = ["mov", "mp4", "m4v", "mxf"]
 
     guard let enumerator = FileManager.default.enumerator(...) { ... }
     // ... 30 lines of traversal logic
