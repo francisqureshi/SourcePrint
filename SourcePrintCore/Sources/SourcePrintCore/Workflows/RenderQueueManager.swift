@@ -169,9 +169,9 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
         NSLog("⏸️ Stopping render queue processing")
 
         processingTask?.cancel()
-        processingTask = nil
-        isProcessing = false
-        currentItem = nil
+        queue.removeAll()
+        // Keep the queue busy until the render's structured child tasks have
+        // unwound. A new render must not overlap cancelled workers or cleanup.
     }
 
     /// Clear the queue (removes all pending items)
@@ -246,6 +246,7 @@ public class RenderQueueManager: ObservableObject, RenderProgressDelegate {
 
         isProcessing = false
         currentItem = nil
+        processingTask = nil
 
         delegate?.queueManager(self, didFinishQueue: completedCount, totalFailed: failedCount)
     }
