@@ -167,21 +167,42 @@ struct MediaRefreshNoticeView: View {
     let details: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(notice, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-            if !details.isEmpty {
-                DisclosureGroup("Details") {
-                    ScrollView {
-                        Text(details.joined(separator: "\n"))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(AppTheme.error)
+                .frame(width: 20, height: 20)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Media needs attention")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text(notice)
+                    .font(.callout)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !details.isEmpty {
+                    DisclosureGroup("Details") {
+                        ScrollView {
+                            Text(details.joined(separator: "\n"))
+                                .font(.callout)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 120)
+                        .padding(.top, 6)
                     }
-                    .frame(height: 120)
+                    .font(.callout)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 12)
+        .padding(12)
+        .background(AppTheme.backgroundCard, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(AppTheme.backgroundDivider.opacity(0.6), lineWidth: 1)
+        }
+        .padding(.vertical, 8)
     }
 }
