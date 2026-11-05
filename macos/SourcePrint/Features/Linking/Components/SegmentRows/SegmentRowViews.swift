@@ -222,6 +222,17 @@ struct LowConfidenceSegmentRowView: View {
         SegmentOCFLinker().validCandidates(for: linkedSegment.segment, in: availableOCFs)
     }
 
+    /// Keep the common parent name for context and enough suffix to distinguish every location.
+    private func candidateFolder(_ url: URL) -> String {
+        let folders = candidates.map { $0.url.deletingLastPathComponent().pathComponents }
+        let current = url.deletingLastPathComponent().pathComponents
+        var shared = 0
+        while shared < current.count, folders.allSatisfy({ $0.count > shared && $0[shared] == current[shared] }) {
+            shared += 1
+        }
+        return current.dropFirst(max(1, shared - 1)).joined(separator: "/")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(linkedSegment.segment.fileName, systemImage: "questionmark.circle.fill")
@@ -233,20 +244,47 @@ struct LowConfidenceSegmentRowView: View {
                 Text("No valid candidates. Check the media metadata and link again.")
                     .font(.caption).foregroundStyle(.red)
             } else {
-                Picker("Valid OCF candidates", selection: $selectedOCFURL) {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                    GridRow {
+                        Text("Choose")
+                        Text("OCF filename")
+                        Text("Folder")
+                        Text("Reveal")
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    Divider().gridCellUnsizedAxes(.horizontal)
                     ForEach(candidates, id: \.url) { ocf in
-                        VStack(alignment: .leading, spacing: 2) {
+                        GridRow {
+                            Button {
+                                selectedOCFURL = ocf.url
+                            } label: {
+                                Image(systemName: selectedOCFURL == ocf.url ? "largecircle.fill.circle" : "circle")
+                                    .foregroundStyle(selectedOCFURL == ocf.url ? Color.accentColor : Color.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Choose \(ocf.fileName) in \(candidateFolder(ocf.url))")
+                            .accessibilityValue(selectedOCFURL == ocf.url ? "Selected" : "Not selected")
                             Text(ocf.fileName)
-                            Text(ocf.url.deletingLastPathComponent().path)
-                                .font(.caption).foregroundStyle(.secondary)
-                                .lineLimit(2)
+                                .lineLimit(1).truncationMode(.middle)
+                                .help(ocf.url.path)
+                            Text(candidateFolder(ocf.url))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .help(ocf.url.deletingLastPathComponent().path)
+                            Button {
+                                NSWorkspace.shared.selectFile(ocf.url.path, inFileViewerRootedAtPath: "")
+                            } label: {
+                                Image(systemName: "folder").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Reveal in Finder")
+                            .accessibilityLabel("Reveal \(ocf.fileName) in Finder")
                         }
-                        .help(ocf.url.path)
-                        .tag(ocf.url as URL?)
+                        .padding(.vertical, 3)
                     }
                 }
-                .pickerStyle(.radioGroup)
-                .labelsHidden()
+
             }
             HStack {
                 Spacer()
