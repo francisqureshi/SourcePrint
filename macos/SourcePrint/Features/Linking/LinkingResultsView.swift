@@ -312,19 +312,27 @@ struct LinkingResultsView: View {
     @State private var inspectedGrade: URL?
 
     private var effectiveCandidateChoices: [URL: URL] {
-        var result = candidateChoices
-        for child in lowConfidenceSegments where result[child.segment.url] == nil {
-            result[child.segment.url] = SegmentOCFLinker().preferredCandidate(for: child.segment,
-                in: project.model.ocfFiles, folder: project.model.preferredOCFFolder)?.url
+        var result: [URL: URL] = [:]
+        let linker = SegmentOCFLinker()
+        for child in lowConfidenceSegments {
+            let grade = child.segment
+            if let chosen = candidateChoices[grade.url] {
+                // An explicit choice takes precedence, but must still be a valid candidate.
+                result[grade.url] = linker.validCandidates(for: grade, in: project.model.ocfFiles)
+                    .first(where: { $0.url == chosen })?.url
+            } else {
+                result[grade.url] = linker.preferredCandidate(for: grade,
+                    in: project.model.ocfFiles, folder: project.model.preferredOCFFolder)?.url
+            }
         }
         return result
     }
 
     private var bulkConfirmationPairs: [(segment: URL, ocf: URL)] {
-        lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }.compactMap { child in
-            guard let candidate = SegmentOCFLinker().preferredCandidate(for: child.segment,
-                in: project.model.ocfFiles, folder: project.model.preferredOCFFolder) else { return nil }
-            return (child.segment.url, candidate.url)
+        let choices = effectiveCandidateChoices
+        return lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }.compactMap { child in
+            guard let candidate = choices[child.segment.url] else { return nil }
+            return (child.segment.url, candidate)
         }
     }
 
@@ -376,7 +384,7 @@ struct LinkingResultsView: View {
             if let folder = project.model.preferredOCFFolder {
                 Text(folder.path).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(folder.path)
             }
-            Text("Confirm All includes only shown clips with exactly one valid candidate\(project.model.preferredOCFFolder == nil ? "" : " in the preferred folder"). Other matches stay unconfirmed.")
+            Text("Confirm All uses your chosen candidates first, then unique matches from the folder preference. Only shown clips with a valid choice are confirmed.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(.horizontal)
     }
