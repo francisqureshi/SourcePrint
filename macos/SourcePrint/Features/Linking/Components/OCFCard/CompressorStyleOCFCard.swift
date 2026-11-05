@@ -137,7 +137,10 @@ struct CompressorStyleOCFCard: View {
                 // Render Log Section
                 RenderLogSection(
                     blankRushStatus: project.model.blankRushStatus[parent.ocf.fileName] ?? .notCreated,
-                    mostRecentPrint: project.latestPrintByOCF[parent.ocf.fileName]
+                    mostRecentPrint: project.latestPrintByOCF[parent.ocf.fileName],
+                    publishedURL: project.model.publishHistory.last {
+                        $0.renderID == project.latestPrintByOCF[parent.ocf.fileName]?.id && $0.state == "published"
+                    }?.destinationURL
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {

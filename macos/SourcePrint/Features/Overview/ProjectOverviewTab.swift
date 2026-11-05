@@ -59,6 +59,7 @@ struct ProjectStatsView: View {
 
 struct ProjectDirectoriesView: View {
     @ObservedObject var project: ProjectViewModel
+    @EnvironmentObject var projectManager: ProjectManager
 
     var body: some View {
         GroupBox("Project Directories") {
@@ -69,6 +70,32 @@ struct ProjectDirectoriesView: View {
                     icon: "folder.badge.gearshape"
                 ) { newDirectory in
                     project.model.outputDirectory = newDirectory
+                }
+
+                Divider()
+
+                if let directory = project.model.publishDirectory {
+                    DirectoryRowView(title: "Publish Folder", directory: directory, icon: "square.and.arrow.up") { url in
+                        project.model.publishDirectory = url
+                        project.updateModified()
+                        projectManager.saveProject(project)
+                    }
+                } else {
+                    HStack {
+                        Label("Publish Folder", systemImage: "square.and.arrow.up")
+                        Spacer()
+                        Button("Choose…") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseDirectories = true
+                            panel.canChooseFiles = false
+                            panel.allowsMultipleSelection = false
+                            if panel.runModal() == .OK, let url = panel.url {
+                                project.model.publishDirectory = url
+                                project.updateModified()
+                                projectManager.saveProject(project)
+                            }
+                        }
+                    }
                 }
 
                 Divider()

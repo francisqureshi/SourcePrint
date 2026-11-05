@@ -247,6 +247,7 @@ struct StatusBarView: View {
                 .disabled(viewModel.totalRenderableCount == 0)
         }
         .monospacedDigit()
+        .disabled(viewModel.isPublishing)
     }
 
 }

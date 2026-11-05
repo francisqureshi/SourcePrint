@@ -2,12 +2,21 @@ import SwiftUI
 import SourcePrintCore
 
 struct RenderHistoryDrawer: View {
-    let records: [SourcePrintCore.PrintRecord]
-    let sources: [MediaFileInfo]
+    @ObservedObject var project: ProjectViewModel
+    @EnvironmentObject var projectManager: ProjectManager
+    let isRendering: Bool
+    private var records: [SourcePrintCore.PrintRecord] { project.model.printHistory }
+    private var sources: [MediaFileInfo] { project.model.ocfFiles }
+    @State private var eligibleIDs: Set<UUID> = []
+    @State private var publishPlan: [PublishItem] = []
+    @State private var showPublishReview = false
+    @State private var preparingPublish = false
+    @State private var publishMessage: String?
+    @State private var inspectedOutputURL: URL?
+
     let onClose: () -> Void
     @State private var search = ""
     @State private var collapsedBatches: Set<String> = []
-    @State private var job: String?
     @State private var selection: UUID?
     @State private var outputState = "Checking output…"
     @State private var canOpenOutput = false
@@ -29,7 +38,6 @@ struct RenderHistoryDrawer: View {
 
     private var visible: [SourcePrintCore.PrintRecord] {
         records.filter {
-            (job == nil || identity($0) == job) &&
             (search.isEmpty || [$0.ocfFileName, $0.ocfURL?.path ?? "", $0.outputURL.path, status($0)]
                 .contains { $0.localizedCaseInsensitiveContains(search) })
         }.sorted { $0.date < $1.date }
@@ -96,23 +104,30 @@ struct RenderHistoryDrawer: View {
             HStack {
                 Label("Render Log", systemImage: "clock.arrow.circlepath").font(.headline)
                 Spacer()
+                Button("Publish All (\(eligibleIDs.count))") {
+                    preparePublish(records.filter { eligibleIDs.contains($0.id) })
+                }
+                .tint(.blue)
+                .accentColor(.blue)
+                .disabled(eligibleIDs.isEmpty || isRendering || project.isPublishing || preparingPublish)
                 Text("\(visible.count) attempts").foregroundStyle(.secondary)
                 Button(action: onClose) { Image(systemName: "xmark") }
                     .buttonStyle(.plain).help("Close render log")
             }
             .padding()
+            if project.model.publishDirectory == nil {
+                Text("Choose a Publish Folder in Overview to enable publishing.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+            }
+            if project.isPublishing {
+                ProgressView("Publishing…").padding(.horizontal)
+            }
+            if let publishMessage {
+                Text(publishMessage).font(.caption).textSelection(.enabled).padding(.horizontal)
+            }
             TextField("Search jobs, paths or results", text: $search)
             .padding(.horizontal)
             .padding(.bottom, 8)
-            if job != nil {
-                HStack {
-                    Text("Job history").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("All jobs") { job = nil; selection = nil }
-                }
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-            }
             Divider()
             ScrollViewReader { scroll in
                 List(selection: $selection) {
@@ -129,7 +144,7 @@ struct RenderHistoryDrawer: View {
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         Spacer(minLength: 8)
-                                        Text(status(record))
+                                        Text(published(record) != nil ? "Published" : status(record))
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                         Text("\(record.duration, specifier: "%.1f")s")
@@ -140,9 +155,6 @@ struct RenderHistoryDrawer: View {
                                     .padding(.leading, 20)
                                     .padding(.vertical, 6)
                                     .tag(record.id)
-                                    .contextMenu {
-                                        Button("Show job history") { job = identity(record); selection = record.id }
-                                    }
                                 }
                             }
                         } header: {
@@ -175,13 +187,21 @@ struct RenderHistoryDrawer: View {
             if let record = selected {
                 details(record)
             } else {
-                Text("Select an attempt to inspect its output and job history.")
+                Text("Select an attempt to inspect its output and render details.")
                     .font(.callout).foregroundStyle(.secondary).padding()
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .onChange(of: search) { _, _ in selection = nil }
         .task(id: selection) { await inspectOutput() }
+        .task(id: project.model.lastModified) {
+            while !Task.isCancelled {
+                await refreshPublishCandidates()
+                try? await Task.sleep(for: .seconds(30))
+            }
+        }
+        .sheet(isPresented: $showPublishReview) { publishReview }
+
         .onChange(of: records.count) { _, _ in
             // Recheck an older selected attempt when a new render replaces its output.
             selection = nil
@@ -197,7 +217,10 @@ struct RenderHistoryDrawer: View {
                 HStack {
                     Text(record.ocfFileName).font(.headline)
                     Spacer()
-                    Button("Job history") { job = identity(record) }
+                    Button("Publish") { preparePublish([record]) }
+                        .tint(.blue)
+                        .accentColor(.blue)
+                        .disabled(!eligibleIDs.contains(record.id) || isRendering || project.isPublishing || preparingPublish)
                 }
                 Text("\(status(record)) · \(record.date.formatted(date: .abbreviated, time: .standard))")
                 Text("\(record.segmentCount) \(record.segmentCount == 1 ? "segment" : "segments") · Render time \(record.duration, specifier: "%.1f")s")
@@ -214,11 +237,22 @@ struct RenderHistoryDrawer: View {
                     Text(record.cancelled == true ? "Render cancelled" : "Failure details unavailable in older history")
                         .foregroundStyle(.secondary)
                 }
+                if let event = published(record) {
+                    Text("Published · " + event.date.formatted(date: .abbreviated, time: .standard))
+                        .foregroundStyle(.green)
+                    if let message = event.message {
+                        Text(message).foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(project.model.publishHistory.filter { $0.renderID == record.id && $0.state != "published" }) { event in
+                    Text("Publish \(event.state) · \(event.message ?? "Review and retry if delivery was interrupted.")")
+                        .foregroundStyle(.secondary)
+                }
                 Divider()
                 Text(outputState).fontWeight(.medium)
                 HStack {
-                    Button("Open Output") { NSWorkspace.shared.open(record.outputURL) }
-                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([record.outputURL]) }
+                    Button("Open Output") { if let url = inspectedOutputURL { NSWorkspace.shared.open(url) } }
+                    Button("Reveal in Finder") { if let url = inspectedOutputURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } }
                 }
                 .disabled(!canOpenOutput)
                 DisclosureGroup("File locations") {
@@ -227,6 +261,10 @@ struct RenderHistoryDrawer: View {
                         Text(record.ocfURL?.path ?? "Source path unavailable in older history")
                         Text("Output").fontWeight(.medium)
                         Text(record.outputURL.path)
+                        if let event = published(record) {
+                            Text("Published destination").fontWeight(.medium)
+                            Text(event.destinationURL.path)
+                        }
                     }
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -249,7 +287,10 @@ struct RenderHistoryDrawer: View {
             outputState = "This attempt produced no completed output"
             return
         }
-        let newer = records.contains {
+        let event = published(record)
+        let outputURL = event?.destinationURL ?? record.outputURL
+        let expected = event?.outputFingerprint ?? record.outputFingerprint
+        let newer = event == nil && records.contains {
             $0.success && $0.date > record.date &&
             $0.outputURL.standardizedFileURL == record.outputURL.standardizedFileURL
         }
@@ -258,22 +299,151 @@ struct RenderHistoryDrawer: View {
             return
         }
         let current = await Task.detached(priority: .utility) {
-            RenderOutputFingerprint.capture(at: record.outputURL)
+            RenderOutputFingerprint.capture(at: outputURL)
         }.value
         guard !Task.isCancelled, selection == record.id else { return }
         guard let current else {
             outputState = "Output missing or unavailable · it may have moved"
             return
         }
-        guard let saved = record.outputFingerprint else {
+        guard let saved = expected else {
             outputState = "File exists · historical version unverified"
             return
         }
         guard current == saved else {
-            outputState = "Output changed or replaced since this render"
+            outputState = event == nil ? "Output changed or replaced since this render" : "Published output has since been replaced or changed"
             return
         }
-        outputState = "Rendered output available"
+        outputState = event == nil ? "Rendered output available" : "Published output available"
+        inspectedOutputURL = outputURL
         canOpenOutput = true
     }
+    private func published(_ record: SourcePrintCore.PrintRecord) -> PublishRecord? {
+        project.model.publishHistory.last { $0.renderID == record.id && $0.state == "published" }
+    }
+
+    private func refreshPublishCandidates() async {
+        guard project.model.publishDirectory != nil else { eligibleIDs = []; return }
+        let completed = records.filter { $0.success }
+        var seenJobs = Set<String>()
+        var seenOutputs = Set<URL>()
+        let candidates = completed.reversed().filter { record in
+            let latestJob = seenJobs.insert(identity(record)).inserted
+            let latestOutput = seenOutputs.insert(record.outputURL.standardizedFileURL).inserted
+            return latestJob && latestOutput && published(record) == nil
+        }
+        let ids = await Task.detached(priority: .utility) {
+            Set(candidates.filter {
+                guard let saved = $0.outputFingerprint else { return false }
+                return RenderOutputFingerprint.capture(at: $0.outputURL) == saved
+            }.map(\.id))
+        }.value
+        guard !Task.isCancelled else { return }
+        eligibleIDs = ids
+    }
+
+    private func preparePublish(_ renders: [SourcePrintCore.PrintRecord]) {
+        guard let directory = project.model.publishDirectory, !renders.isEmpty else { return }
+        preparingPublish = true
+        publishMessage = nil
+        let protected = (project.model.ocfFiles + project.model.segments).map(\.url)
+            + [project.model.fileURL].compactMap { $0 }
+        Task {
+            do {
+                let plan = try await Task.detached(priority: .utility) {
+                    try PublishService.prepare(renders, directory: directory, protectedURLs: protected)
+                }.value
+                publishPlan = plan
+                showPublishReview = true
+            } catch {
+                publishMessage = error.localizedDescription
+            }
+            preparingPublish = false
+        }
+    }
+
+    private var publishReview: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Publish \(publishPlan.count) \(publishPlan.count == 1 ? "job" : "jobs")").font(.title2)
+            Text("Move these rendered outputs to the Publish Folder. Existing files marked Replace will be overwritten.")
+            Text(publishPlan.first?.destination.deletingLastPathComponent().path ?? "")
+                .font(.caption).textSelection(.enabled)
+            List(publishPlan) { item in
+                HStack {
+                    Text(item.render.ocfFileName)
+                    Spacer()
+                    Text(item.previousDestination == nil ? "Add" : "Replace")
+                        .foregroundStyle(item.previousDestination == nil ? Color.secondary : Color.orange)
+                }
+            }
+            .frame(height: min(280, CGFloat(publishPlan.count) * 32 + 16))
+            HStack {
+                Spacer()
+                Button("Cancel") { showPublishReview = false }
+                Button("Publish") { performPublish() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    .accentColor(.blue)
+                    .disabled(isRendering || project.isPublishing)
+            }
+        }
+        .padding(24)
+        .frame(width: 550)
+    }
+
+    private func savePublishingState() async throws {
+        project.updateModified()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            projectManager.saveProject(project) { continuation.resume(with: $0) }
+        }
+    }
+
+    private func performPublish() {
+        guard !project.isPublishing, !isRendering else { return }
+        let plan = publishPlan
+        project.isPublishing = true
+        showPublishReview = false
+        Task {
+            var completed = 0
+            var messages: [String] = []
+            for item in plan {
+                let event = PublishRecord(render: item.render, destinationURL: item.destination)
+                let index = project.model.publishHistory.count
+                project.model.publishHistory.append(event)
+                do {
+                    try await savePublishingState()
+                    let fingerprint = try await Task.detached(priority: .utility) {
+                        try PublishService.install(item)
+                    }.value
+                    project.model.publishHistory[index].state = "published"
+                    project.model.publishHistory[index].date = Date()
+                    project.model.publishHistory[index].outputFingerprint = fingerprint
+                    if case .printed(let date, let url) = project.model.printStatus[item.render.ocfFileName],
+                       url == item.render.outputURL {
+                        project.model.printStatus[item.render.ocfFileName] = .printed(date: date, outputURL: item.destination)
+                    }
+                    try await savePublishingState()
+                    completed += 1
+                    do {
+                        try await Task.detached(priority: .utility) { try PublishService.removeOriginal(item) }.value
+                    } catch {
+                        let message = "Published; original retained in Output. " + error.localizedDescription
+                        project.model.publishHistory[index].message = message
+                        messages.append(message)
+                        try? await savePublishingState()
+                    }
+                } catch {
+                    project.model.publishHistory[index].state = "failed"
+                    project.model.publishHistory[index].message = error.localizedDescription
+                    messages.append(item.render.ocfFileName + " · " + error.localizedDescription)
+                    try? await savePublishingState()
+                }
+            }
+            project.isPublishing = false
+            publishMessage = "Published \(completed) of \(plan.count) jobs." + (messages.isEmpty ? "" : " " + messages.joined(separator: "\n"))
+            await refreshPublishCandidates()
+            await inspectOutput()
+        }
+    }
+
 }

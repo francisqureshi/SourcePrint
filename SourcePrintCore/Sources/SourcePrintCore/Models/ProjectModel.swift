@@ -30,6 +30,8 @@ public struct ProjectModel: Codable, Identifiable {
     public var manualLinkOverrides: [String: String]
 
     // MARK: - Project Settings
+    public var publishDirectory: URL?
+    public var publishHistory: [PublishRecord] = []
     public var outputDirectory: URL
     public var blankRushDirectory: URL
     public var fileURL: URL?
@@ -167,6 +169,8 @@ public struct ProjectModel: Codable, Identifiable {
         case printHistory
         case printStatus
         case manualLinkOverrides
+        case publishDirectory
+        case publishHistory
         case outputDirectory
         case blankRushDirectory
         case fileURL
@@ -200,6 +204,8 @@ public struct ProjectModel: Codable, Identifiable {
         printStatus = try container.decode([String: PrintStatus].self, forKey: .printStatus)
         // Decode manual link overrides with default for old files
         manualLinkOverrides = try container.decodeIfPresent([String: String].self, forKey: .manualLinkOverrides) ?? [:]
+        publishDirectory = try container.decodeIfPresent(URL.self, forKey: .publishDirectory)
+        publishHistory = try container.decodeIfPresent([PublishRecord].self, forKey: .publishHistory) ?? []
         outputDirectory = try container.decode(URL.self, forKey: .outputDirectory)
         blankRushDirectory = try container.decode(URL.self, forKey: .blankRushDirectory)
         fileURL = try container.decodeIfPresent(URL.self, forKey: .fileURL)

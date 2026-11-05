@@ -15,6 +15,8 @@ import SwiftUI
 /// Handles all UI state management and delegates business logic to Core services
 class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDelegate {
 
+    @Published var isPublishing = false
+
     // MARK: - File Format Version
 
     /// File format version for future migrations

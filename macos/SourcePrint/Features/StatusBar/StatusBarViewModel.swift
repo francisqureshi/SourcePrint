@@ -76,6 +76,7 @@ final class StatusBarViewModel {
     var totalRenderableCount: Int = 0
 
     /// Number of modified OCFs that need re-rendering
+    var isPublishing = false
     var modifiedRenderCount: Int = 0
 
     /// Callbacks for render actions

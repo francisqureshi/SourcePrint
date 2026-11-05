@@ -17,6 +17,7 @@ private let renderLogDateFormatter: DateFormatter = {
 struct RenderLogSection: View {
     let blankRushStatus: BlankRushStatus
     let mostRecentPrint: SourcePrintCore.PrintRecord?
+    var publishedURL: URL? = nil
     @State private var missingBlankRush: BlankRushStatus?
 
     private var actualBlankRushStatus: BlankRushStatus {
@@ -90,7 +91,7 @@ struct RenderLogSection: View {
 
                         if print.success {
                             Button(action: {
-                                showInFinder(url: print.outputURL)
+                                showInFinder(url: publishedURL ?? print.outputURL)
                             }) {
                                 Image(systemName: "folder")
                                     .foregroundColor(.accentColor)
