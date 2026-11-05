@@ -242,23 +242,39 @@ struct LinkingResultsView: View {
         }
     }
 
+    private struct SourceChangeRow: Identifiable {
+        let url: URL
+        let clip: String
+        let field: String
+        let before: String
+        let after: String
+        var id: String { url.absoluteString + "|" + field }
+    }
+
     private func sourceChangesSheet(_ review: RenderChangeReview) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Graded clips changed", systemImage: "exclamationmark.triangle.fill")
                 .font(.title2)
             Text("Review the changes before rendering. Continuing updates the media, checks the links and rebuilds the requested jobs.")
                 .foregroundStyle(.secondary)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(review.changes) { change in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(change.original.fileName).font(.headline)
-                            Text(change.id.path).font(.caption).foregroundStyle(.secondary)
-                            ForEach(change.details, id: \.self) { Text($0).monospacedDigit() }
-                        }
-                    }
-                }.frame(maxWidth: .infinity, alignment: .leading)
+            Table(review.changes.flatMap { change in
+                change.differences.map { difference in
+                    SourceChangeRow(url: change.id, clip: change.original.fileName,
+                                    field: difference.field, before: difference.before, after: difference.after)
+                }
+            }) {
+                TableColumn("Clip") { row in
+                    Text(row.clip).lineLimit(1).help(row.url.path)
+                }.width(min: 180, ideal: 250)
+                TableColumn("Changed field", value: \.field).width(130)
+                TableColumn("Before") { row in
+                    Text(row.before).monospacedDigit()
+                }.width(min: 110, ideal: 140)
+                TableColumn("After") { row in
+                    Text(row.after).monospacedDigit()
+                }.width(min: 110, ideal: 160)
             }
+            .tableStyle(.inset(alternatesRowBackgrounds: true))
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) {
@@ -271,7 +287,7 @@ struct LinkingResultsView: View {
             }
         }
         .padding(24)
-        .frame(width: 600, height: 400)
+        .frame(width: 820, height: 420)
     }
 
     private func cancelCurrentOperation() {

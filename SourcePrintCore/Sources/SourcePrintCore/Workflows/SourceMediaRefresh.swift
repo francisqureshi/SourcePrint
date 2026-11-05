@@ -7,30 +7,48 @@ public enum SourceMediaRefresh {
         public let original: MediaFileInfo
         public let refreshed: MediaFileInfo
 
-        public var details: [String] {
-            var lines: [String] = []
+        public struct Difference {
+            public let field: String
+            public let before: String
+            public let after: String
+        }
+
+        public var differences: [Difference] {
+            var rows: [Difference] = []
             if original.durationInFrames != refreshed.durationInFrames {
-                lines.append("Duration: \(original.durationInFrames.map(String.init) ?? "Unknown") → \(refreshed.durationInFrames.map(String.init) ?? "Unknown") frames")
+                rows.append(Difference(field: "Duration (frames)", before: original.durationInFrames.map(String.init) ?? "Unknown", after: refreshed.durationInFrames.map(String.init) ?? "Unknown"))
             }
             if original.sourceTimecode != refreshed.sourceTimecode {
-                lines.append("Start TC: \(original.sourceTimecode ?? "Unknown") → \(refreshed.sourceTimecode ?? "Unknown")")
+                rows.append(Difference(field: "Start TC", before: original.sourceTimecode ?? "Unknown", after: refreshed.sourceTimecode ?? "Unknown"))
             }
             if original.endTimecode != refreshed.endTimecode {
-                lines.append("End TC: \(original.endTimecode ?? "Unknown") → \(refreshed.endTimecode ?? "Unknown")")
+                rows.append(Difference(field: "End TC", before: original.endTimecode ?? "Unknown", after: refreshed.endTimecode ?? "Unknown"))
             }
             if original.effectiveDisplayResolution != refreshed.effectiveDisplayResolution {
                 func resolution(_ file: MediaFileInfo) -> String {
                     guard let r = file.effectiveDisplayResolution else { return "Unknown" }
                     return "\(Int(r.width)) × \(Int(r.height))"
                 }
-                lines.append("Resolution: \(resolution(original)) → \(resolution(refreshed))")
+                rows.append(Difference(field: "Resolution", before: resolution(original), after: resolution(refreshed)))
             }
             if original.frameRateFloat != refreshed.frameRateFloat {
-                lines.append("FPS: \(original.frameRateFloat.map { String($0) } ?? "Unknown") → \(refreshed.frameRateFloat.map { String($0) } ?? "Unknown")")
+                rows.append(Difference(field: "FPS", before: original.frameRateFloat.map { String($0) } ?? "Unknown", after: refreshed.frameRateFloat.map { String($0) } ?? "Unknown"))
             }
-            if lines.isEmpty { lines.append("File changed; duration remains \(refreshed.durationInFrames.map(String.init) ?? "Unknown") frames.") }
-            return lines
+            if rows.isEmpty {
+                rows.append(Difference(field: "File", before: "Previous version", after: "Changed (\(refreshed.durationInFrames.map(String.init) ?? "Unknown") frames)"))
+            }
+            return rows
         }
+
+        public var details: [String] {
+            differences.map { difference in
+                if difference.field == "Duration (frames)" {
+                    return "Duration: \(difference.before) → \(difference.after) frames"
+                }
+                return "\(difference.field): \(difference.before) → \(difference.after)"
+            }
+        }
+
     }
 
     /// Read-only inspection: cancelling a render leaves the project's saved metadata intact.
