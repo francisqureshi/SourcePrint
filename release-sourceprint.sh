@@ -55,14 +55,27 @@ fi
 NOTES_HTML=$(RELEASE_NOTES_TEXT="$NOTES" python3 - <<'PYHTML'
 import html, os
 lines = os.environ["RELEASE_NOTES_TEXT"].splitlines()
-items = []
+output = []
+in_list = False
 for line in lines:
     line = line.strip()
-    if line:
+    if not line:
+        continue
+    if line.startswith("### "):
+        if in_list:
+            output.append("</ul>")
+            in_list = False
+        output.append("<h3>" + html.escape(line[4:]) + "</h3>")
+    else:
+        if not in_list:
+            output.append("<ul>")
+            in_list = True
         if line.startswith(("- ", "* ")):
             line = line[2:]
-        items.append("<li>" + html.escape(line) + "</li>")
-print("<ul>\n" + "\n".join(items) + "\n</ul>")
+        output.append("<li>" + html.escape(line) + "</li>")
+if in_list:
+    output.append("</ul>")
+print("\n".join(output))
 PYHTML
 )
 
