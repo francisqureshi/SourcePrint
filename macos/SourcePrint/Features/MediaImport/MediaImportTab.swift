@@ -147,7 +147,10 @@ struct MediaImportTab: View {
                     onDropFiles: { importDroppedFiles($0, isOCF: false) },
                     reviewURLs: project.mediaReviewURLs,
                     reviewRequestID: project.mediaReviewRequestID,
-                    unavailableURLs: project.unavailableGradeURLs
+                    unavailableURLs: project.unavailableGradeURLs,
+                    onAvailabilityChecked: { checked, unavailable in
+                        project.updateGradeAvailability(checkedURLs: checked, unavailableURLs: unavailable)
+                    }
                 )
                 .frame(minWidth: 400)
             }

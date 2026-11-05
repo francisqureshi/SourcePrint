@@ -23,7 +23,34 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable {
     @Published var mediaReviewURLs: Set<URL> = []
     @Published var mediaReviewRequestID: UUID?
     @Published var unavailableGradeURLs: Set<URL> = []
+    private var missingGradeURLs: Set<URL> = []
+    private var availabilityNotice: String?
     private var relinkAfterMediaRefresh = false
+
+    /// Clear only missing-file failures after reconnection; metadata is still checked on link/render.
+    @MainActor
+    func updateGradeAvailability(checkedURLs: Set<URL>, unavailableURLs: Set<URL>) {
+        let recovered = missingGradeURLs.intersection(checkedURLs).subtracting(unavailableURLs)
+        guard !recovered.isEmpty else { return }
+        missingGradeURLs.subtract(recovered)
+        unavailableGradeURLs.subtract(recovered)
+        if mediaRefreshNotice == availabilityNotice {
+            setAvailabilityNotice(offlineCount: missingGradeURLs.count, failures: mediaRefreshDetails)
+        }
+    }
+
+    private func setAvailabilityNotice(offlineCount: Int, failures: [String]) {
+        var messages: [String] = []
+        if offlineCount > 0 {
+            messages.append("\(offlineCount) \(offlineCount == 1 ? "clip is" : "clips are") offline. Reconnect the files before linking.")
+        }
+        if !failures.isEmpty {
+            messages.append("\(failures.count) \(failures.count == 1 ? "clip could" : "clips could") not be read. Review the details before linking.")
+        }
+        mediaRefreshNotice = messages.isEmpty ? nil : messages.joined(separator: " ")
+        mediaRefreshDetails = failures
+        availabilityNotice = mediaRefreshNotice
+    }
     private var mediaRefreshTask: Task<Bool, Never>?
 
     @MainActor
@@ -34,7 +61,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable {
             let previousNotice = mediaRefreshNotice
             var changed = false
             var failures: [String] = []
-            var offlineCount = 0
+            var missing: Set<URL> = []
             var unavailable: Set<URL> = []
             for original in snapshot {
                 do {
@@ -64,25 +91,18 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable {
                     let nsError = error as NSError
                     if nsError.domain == NSCocoaErrorDomain &&
                         (nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError) {
-                        offlineCount += 1
+                        missing.insert(original.url)
                     } else {
                         failures.append("\(original.fileName): \(error.localizedDescription)")
                     }
                 }
             }
+            missingGradeURLs = missing
             unavailableGradeURLs = unavailable
             if !unavailable.isEmpty {
                 relinkAfterMediaRefresh = relinkAfterMediaRefresh || model.linkingResult != nil
                 model.linkingResult = nil
-                var messages: [String] = []
-                if offlineCount > 0 {
-                    messages.append("\(offlineCount) \(offlineCount == 1 ? "clip is" : "clips are") offline. Reconnect the files before linking.")
-                }
-                if !failures.isEmpty {
-                    messages.append("\(failures.count) \(failures.count == 1 ? "clip could" : "clips could") not be read. Review the details before linking.")
-                }
-                mediaRefreshNotice = messages.joined(separator: " ")
-                mediaRefreshDetails = failures
+                setAvailabilityNotice(offlineCount: missing.count, failures: failures)
             } else {
                 mediaRefreshNotice = nil
                 if (changed && model.linkingResult != nil) || relinkAfterMediaRefresh {

@@ -36,6 +36,7 @@ struct MediaFileColumnTableView: View {
     var unavailableURLs: Set<URL> = []
     var onFindMatchingOCF: (() -> Void)? = nil
     var canFindMatchingOCF = false
+    var onAvailabilityChecked: ((Set<URL>, Set<URL>) -> Void)? = nil
     @State private var isDropTargeted = false
     @State private var unavailableOnDisk: Set<URL> = []
     @State private var availabilityRevision = 0
@@ -43,6 +44,7 @@ struct MediaFileColumnTableView: View {
     private struct AvailabilityRequest: Equatable {
         let urls: [URL]
         let revision: Int
+        let reportedUnavailable: Set<URL>
     }
 
     private func isOffline(_ file: MediaFileInfo) -> Bool {
@@ -165,13 +167,14 @@ struct MediaFileColumnTableView: View {
                 .scrollBounceBehavior(.basedOnSize)
             }
         }
-        .task(id: AvailabilityRequest(urls: files.map(\.url), revision: availabilityRevision)) {
+        .task(id: AvailabilityRequest(urls: files.map(\.url), revision: availabilityRevision, reportedUnavailable: unavailableURLs)) {
             let urls = files.map(\.url)
             let missing = await Task.detached(priority: .utility) {
                 Set(urls.filter { !FileManager.default.isReadableFile(atPath: $0.path) })
             }.value
             guard !Task.isCancelled else { return }
             unavailableOnDisk = missing
+            onAvailabilityChecked?(Set(urls), missing)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             availabilityRevision += 1
