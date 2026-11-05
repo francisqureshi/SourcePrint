@@ -214,7 +214,7 @@ struct MediaFileColumnTableView: View {
     }
     
     private var columns: [MediaColumn] {
-        MediaColumn.allCases.filter { type == .segment || $0 != .status }
+        MediaColumn.allCases
     }
 
     private func dimensions(for column: MediaColumn) -> (Binding<CGFloat>, CGFloat) {
@@ -553,11 +553,9 @@ struct MediaFileColumnRowView: View {
                 .padding(.horizontal, 4)
 
         case .status:
-            if type == .segment {
-                statusView
-                    .frame(width: columnWidths.status, alignment: .leading)
-                    .padding(.horizontal, 4)
-            }
+            statusView
+                .frame(width: columnWidths.status, alignment: .leading)
+                .padding(.horizontal, 4)
         }
     }
 
