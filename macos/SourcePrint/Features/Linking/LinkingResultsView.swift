@@ -178,6 +178,7 @@ struct LinkingResultsView: View {
 
     private func renderAll() {
         guard !project.isPublishing else { return }
+        showRenderLog = true
         let ocfsToRender = confidentlyLinkedParents.filter { parent in
             !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
         }
@@ -190,6 +191,7 @@ struct LinkingResultsView: View {
 
     private func renderModified() {
         guard !project.isPublishing else { return }
+        showRenderLog = true
         let modifiedOCFs = renderableParents.filter { modifiedURLs.contains($0.ocf.url) }
 
         NSLog("🔄 Starting batch render for %d modified OCFs", modifiedOCFs.count)
@@ -200,6 +202,7 @@ struct LinkingResultsView: View {
 
     private func renderSelected() {
         guard !project.isPublishing else { return }
+        showRenderLog = true
         let selectedOCFs = confidentlyLinkedParents.filter { parent in
             selectedOCFParents.contains(parent.ocf.url)
         }.filter { parent in
@@ -214,6 +217,7 @@ struct LinkingResultsView: View {
 
     private func renderSingle(parent: OCFParent) {
         guard !project.isPublishing else { return }
+        showRenderLog = true
         NSLog("🎬 Starting single render for: %@", parent.ocf.fileName)
         renderQueueManager.addToQueue([parent], batchName: "Render Job")
         renderQueueManager.startProcessing()
@@ -469,6 +473,19 @@ struct LinkingResultsView: View {
         }
         .toolbar {
             Button {
+                if showRenderLog {
+                    showRenderLog = false
+                    showUnmatchedDrawer = true
+                } else {
+                    showUnmatchedDrawer.toggle()
+                }
+            } label: {
+                Label("Unmatched Items", systemImage: "link")
+            }
+            .disabled(linkingResult == nil)
+            .help("\(showUnmatchedDrawer && !showRenderLog ? "Hide" : "Show") Unmatched Items (\(totalUnmatchedItems))")
+
+            Button {
                 showRenderLog.toggle()
             } label: {
                 Label("Render Log", systemImage: "clock.arrow.circlepath")
@@ -661,24 +678,6 @@ struct LinkingResultsView: View {
                             .monospacedDigit()
 
                         Spacer()
-
-                        // Show toggle button here when drawer is hidden
-                        if !showUnmatchedDrawer {
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    showUnmatchedDrawer.toggle()
-                                }
-                            } label: {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "inset.filled.righthalf.rectangle")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .help("Show Unmatched Items (\(totalUnmatchedItems))")
-                            .padding(.trailing)
-                        }
                     }
 
                     // Status line with linking result summary
@@ -803,26 +802,13 @@ struct LinkingResultsView: View {
                                     .foregroundColor(.secondary)
                             }
 
-                            // Xcode-style drawer toggle button
                             Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    showUnmatchedDrawer.toggle()
-                                }
+                                showUnmatchedDrawer = false
                             } label: {
-                                Image(
-                                    systemName: showUnmatchedDrawer
-                                        ? "inset.filled.righthalf.rectangle"
-                                        : "inset.filled.righthalf.rectangle"
-                                )
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
+                                Image(systemName: "xmark")
                             }
                             .buttonStyle(.plain)
-                            .help(
-                                showUnmatchedDrawer
-                                    ? "Hide Unmatched Items" : "Show Unmatched Items"
-                            )
-                            .padding(.trailing)
+                            .help("Close unmatched items")
                         }
 
                         // Status line for unmatched items
@@ -845,55 +831,6 @@ struct LinkingResultsView: View {
                     let ocfs = (linkingResult?.unmatchedOCFs ?? []).filter { matchesUnmatchedSearch($0) }
                     let lowConfidence = lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }
                     List(selection: $selectedUnmatchedFiles) {
-                        // Unmatched Segments (shown first - most important)
-                        if !segments.isEmpty {
-                            Section("Unmatched Segments (\(segments.count))")
-                            {
-                                ForEach(segments, id: \.fileName) {
-                                    segment in
-                                    UnmatchedFileRowView(file: segment, type: .segment)
-                                        .tag(segment.fileName)
-                                }
-                            }
-                        }
-
-                        // Unmatched OCF Files
-                        if !ocfs.isEmpty {
-                            Section {
-                                ForEach(ocfs, id: \.fileName) { ocf in
-                                    UnmatchedFileRowView(file: ocf, type: .ocf)
-                                        .tag(ocf.fileName)
-                                }
-                            } header: {
-                                HStack {
-                                    Text(
-                                        "Unmatched OCF Files (\(ocfs.count))"
-                                    )
-                                    .monospacedDigit()
-
-                                    Spacer()
-
-                                    Menu {
-                                        Button(
-                                            "Remove Unmatched OCF Files", systemImage: "trash"
-                                        ) {
-                                            removeUnmatchedOCFFiles(ocfs)
-                                        }
-                                        .foregroundColor(.red)
-                                    } label: {
-                                        Image(systemName: "ellipsis")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .menuStyle(.borderlessButton)
-                                    .menuIndicator(.hidden)
-                                    .menuOrder(.fixed)
-                                    .fixedSize()
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-
                         // Low Confidence Matches
                         if !lowConfidence.isEmpty {
                             Section("Low Confidence Matches (\(lowConfidence.count))") {
@@ -913,6 +850,54 @@ struct LinkingResultsView: View {
                                 }
                             }
                         }
+
+                        // Unmatched graded segments need attention before unmatched OCFs
+                        if !segments.isEmpty {
+                            Section {
+                                ForEach(segments, id: \.fileName) {
+                                    segment in
+                                    UnmatchedFileRowView(file: segment, type: .segment)
+                                        .tag(segment.fileName)
+                                }
+                            } header: {
+                                Label("Unmatched Segments (\(segments.count))", systemImage: "exclamationmark.triangle.fill")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(AppTheme.error)
+                                    .monospacedDigit()
+                            }
+                        }
+
+                        // Unmatched OCF Files
+                        if !ocfs.isEmpty {
+                            Section {
+                                ForEach(ocfs, id: \.fileName) { ocf in
+                                    UnmatchedFileRowView(file: ocf, type: .ocf)
+                                        .tag(ocf.fileName)
+                                }
+                            } header: {
+                                HStack {
+                                    Text(
+                                        "Unmatched OCF Files (\(ocfs.count))"
+                                    )
+                                    .monospacedDigit()
+
+                                    Spacer()
+
+                                    Button("Clear", systemImage: "trash", role: .destructive) {
+                                        removeUnmatchedOCFFiles(ocfs)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(AppTheme.error)
+                                    .textCase(nil)
+                                    .accessibilityLabel("Remove unmatched OCF files")
+                                    .help("Remove the shown unmatched OCF entries from this project. Files on disk are kept.")
+                                    .fixedSize()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+
+
                     }
                 }
                 .frame(minWidth: 300)

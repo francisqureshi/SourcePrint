@@ -816,7 +816,7 @@ public class ImportProcess {
 
     // Check if file is a supported video format
     private func isVideoFile(_ url: URL) -> Bool {
-        let videoExtensions = ["mov", "mp4", "mxf", "avi", "mkv", "m4v", "prores"]
+        let videoExtensions = ["mov", "mp4", "mxf", "avi", "mkv", "m4v"]
         let ext = url.pathExtension.lowercased()
         return videoExtensions.contains(ext)
     }

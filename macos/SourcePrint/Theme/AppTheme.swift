@@ -12,8 +12,8 @@ import SwiftUI
 struct AppTheme {
 
     // MARK: - Primary Colors
-    static let accent = Color(red: 0.58, green: 0.39, blue: 0.75)  // Purple accent like Compressor
-    static let accentSecondary = Color(red: 0.52, green: 0.33, blue: 0.69)  // Darker purple
+    static let accent = Color.blue  // Native macOS action colour
+    static let accentSecondary = accent
 
     // MARK: - Background Colors (Pure grayscale - no tinting)
     static let backgroundPrimary = Color(white: 0.12)  // Dark grey like Compressor
@@ -31,19 +31,19 @@ struct AppTheme {
     static let textTertiary = Color(white: 0.5)
 
     // MARK: - Status Colors
-    static let success = Color(red: 0.20, green: 0.78, blue: 0.35)  // Green
-    static let warning = Color(red: 1.00, green: 0.58, blue: 0.00)  // Orange
-    static let error = Color(red: 1.00, green: 0.23, blue: 0.19)  // Red
-    static let info = accent  // Use accent purple for info
+    static let success = Color.green
+    static let warning = Color.orange
+    static let error = Color.red
+    static let info = accent  // Blue for information
 
     // MARK: - Media Type Colors
     static let ocfColor = Color(red: 0.00, green: 0.48, blue: 0.80)  // Blue for OCF files
     static let segmentColor = Color(red: 0.73, green: 0.69, blue: 0.59)  // Resolve tan for segments (186, 176, 151)
-    static let blankRushColor = Color(red: 0.35, green: 0.61, blue: 0.35)  // Darker green for blank rushes
+    static let blankRushColor = Color.secondary  // Neutral media type; green is reserved for success
     static let vfxShotColor = Color(red: 0.749, green: 0.352, blue: 0.94)
 
     // MARK: - Render Queue Colors
-    static let queued = warning
+    static let queued = textSecondary
     static let rendering = accent
     static let completed = success
     static let failed = error

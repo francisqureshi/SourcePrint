@@ -105,7 +105,7 @@ ProResWriter/
 - **Complete File Detection**: Copy, move, modify, and batch delete all working perfectly
 - **Debounce System**: 3-second delay ensures files are fully copied before import
 - **Smart Change Detection**: Distinguishes new files, modifications, and deletions (including batch operations)
-- **Automatic Import**: Seamless detection and import of new video files (.mov, .mp4, .m4v, .mxf, .prores)
+- **Automatic Import**: Seamless detection and import of new video files (.mov, .mp4, .m4v, .mxf)
 - **Hidden File Filtering**: Ignores system files (. prefix) to prevent QuickLook interference
 - **Professional Workflow**: Toggle-based monitoring with VFX vs grade folder distinction
 - **Async/await Architecture**: Clean concurrent event handling with MainActor thread safety

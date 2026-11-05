@@ -1333,7 +1333,7 @@ func createBlankRushes(for project: Project) async {
 ```swift
 private func getAllVideoFiles(from directoryURL: URL) async -> [URL] {
     var videoFiles: [URL] = []
-    let videoExtensions = ["mov", "mp4", "m4v", "mxf", "prores"]
+    let videoExtensions = ["mov", "mp4", "m4v", "mxf"]
 
     guard let enumerator = FileManager.default.enumerator(
         at: directoryURL,

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SourcePrintCore
+import UniformTypeIdentifiers
 
 enum MediaColumn: String, CaseIterable {
     case clipName = "Clip Name"
@@ -29,6 +30,8 @@ struct MediaFileColumnTableView: View {
     let onRemoveFiles: (Set<URL>) -> Void
     let onImportAction: (() -> Void)?
     let isAnalyzing: Bool
+    var onDropFiles: (([NSItemProvider]) -> Bool)? = nil
+    @State private var isDropTargeted = false
     
     @State private var selection = Set<URL>()
     
@@ -146,6 +149,26 @@ struct MediaFileColumnTableView: View {
                 .scrollBounceBehavior(.basedOnSize)
             }
         }
+        .contentShape(Rectangle())
+        .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+            guard !isAnalyzing else { return false }
+            return onDropFiles?(providers) ?? false
+        }
+        .overlay {
+            if isDropTargeted && !isAnalyzing {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(AppTheme.accent.opacity(0.12))
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(AppTheme.accent, lineWidth: 2)
+                    Label("Import as \(type == .ocf ? "OCF" : "graded clips")", systemImage: "arrow.down.doc")
+                        .font(.headline)
+                        .padding(16)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .allowsHitTesting(false)
+            }
+        }
         .onDeleteCommand {
             if !selection.isEmpty {
                 onRemoveFiles(selection)
@@ -259,6 +282,10 @@ struct MediaFileColumnTableView: View {
             if !searchText.isEmpty && visibleFiles.isEmpty {
                 Text("No matching files").foregroundStyle(.secondary)
             }
+        }
+        .onDrop(of: [UTType.fileURL], isTargeted: $isDropTargeted) { providers in
+            guard !isAnalyzing else { return false }
+            return onDropFiles?(providers) ?? false
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)

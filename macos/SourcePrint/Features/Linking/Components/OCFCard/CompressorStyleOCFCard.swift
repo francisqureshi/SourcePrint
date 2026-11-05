@@ -228,19 +228,19 @@ private struct ActiveRenderProgress: View {
                 // Use segment progress (e.g., 18/41 = 43.9%)
                 ProgressView(value: Double(segmentProgress.current), total: Double(segmentProgress.total))
                     .progressViewStyle(.linear)
-                    .tint(AppTheme.success)
+                    .tint(AppTheme.accent)
                     .scaleEffect(x: 1, y: 0.5, anchor: .center)
             } else if let progress = queue.currentItem?.progress, let percentage = extractPercentage(from: progress) {
                 // Fallback: Extract percentage for determinate progress bar
                 ProgressView(value: percentage, total: 100.0)
                     .progressViewStyle(.linear)
-                    .tint(AppTheme.success)
+                    .tint(AppTheme.accent)
                     .scaleEffect(x: 1, y: 0.5, anchor: .center)
             } else {
                 // Indeterminate progress bar (composition phase)
                 ProgressView()
                     .progressViewStyle(.linear)
-                    .tint(AppTheme.success)
+                    .tint(AppTheme.accent)
                     .scaleEffect(x: 1, y: 0.5, anchor: .center)
             }
         }
@@ -390,7 +390,7 @@ struct OCFCardHeader: View {
             HStack(spacing: 4) {
                 ProgressView()
                     .controlSize(.small)
-                    .tint(AppTheme.success)
+                    .tint(AppTheme.accent)
                     .scaleEffect(0.8)
                 Text("Rendering")
                     .font(.caption)

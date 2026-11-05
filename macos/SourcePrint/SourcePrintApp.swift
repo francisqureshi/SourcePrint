@@ -31,6 +31,7 @@ struct SourcePrintApp: App {
                 .preferredColorScheme(.dark)
                 .background(Color.appBackground)
                 .tint(Color.appAccent)
+                .accentColor(Color.appAccent)
         }
         .commands {
             CommandGroup(replacing: .newItem) {

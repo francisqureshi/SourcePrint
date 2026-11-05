@@ -46,10 +46,6 @@ final class VideoFileDiscoveryTests: XCTestCase {
         XCTAssertTrue(VideoFileDiscovery.isVideoFile(URL(fileURLWithPath: "test.mxf")))
     }
 
-    func testIsVideoFile_ProRes() {
-        XCTAssertTrue(VideoFileDiscovery.isVideoFile(URL(fileURLWithPath: "test.prores")))
-    }
-
     func testIsVideoFile_CaseInsensitive() {
         XCTAssertTrue(VideoFileDiscovery.isVideoFile(URL(fileURLWithPath: "test.MOV")))
         XCTAssertTrue(VideoFileDiscovery.isVideoFile(URL(fileURLWithPath: "test.MP4")))
@@ -239,6 +235,6 @@ final class VideoFileDiscoveryTests: XCTestCase {
         XCTAssertTrue(VideoFileDiscovery.videoExtensions.contains("mp4"))
         XCTAssertTrue(VideoFileDiscovery.videoExtensions.contains("m4v"))
         XCTAssertTrue(VideoFileDiscovery.videoExtensions.contains("mxf"))
-        XCTAssertTrue(VideoFileDiscovery.videoExtensions.contains("prores"))
+        XCTAssertEqual(VideoFileDiscovery.videoExtensions, ["mov", "mp4", "m4v", "mxf", "avi", "mkv", "avp"])
     }
 }

@@ -19,7 +19,7 @@ struct UnmatchedFileRowView: View {
     var body: some View {
         HStack {
             Image(systemName: type == .ocf ? "film.fill" : "film")
-                .foregroundColor(type == .ocf ? AppTheme.ocfColor : AppTheme.segmentColor)
+                .foregroundColor(type == .ocf ? AppTheme.ocfColor : AppTheme.error)
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -47,7 +47,8 @@ struct UnmatchedFileRowView: View {
                 .font(.caption)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(Color.appBackgroundBadge)
+                .foregroundStyle(type == .segment ? AppTheme.error : Color.primary)
+                .background(type == .segment ? AppTheme.error.opacity(0.15) : Color.appBackgroundBadge)
                 .cornerRadius(4)
         }
     }
