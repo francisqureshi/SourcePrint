@@ -581,14 +581,23 @@ struct MatchReviewOutline: NSViewRepresentable {
                 text.stringValue = file.url.deletingLastPathComponent().pathComponents.suffix(3).joined(separator: "/")
                 text.toolTip = file.url.deletingLastPathComponent().path
             case "Status": text.stringValue = node.status; if node.status == "Unmatched grade" { text.textColor = .systemRed }
-            case "Resolution": text.stringValue = file.resolution.map { "\($0.width)×\($0.height)" } ?? "—"
+            case "Resolution": text.stringValue = file.resolution.map { String(format: "%.0f×%.0f", $0.width, $0.height) } ?? "—"
             case "FPS": text.stringValue = String(format: "%.3f", file.frameRateFloat ?? 0)
             case "Start TC": text.stringValue = file.sourceTimecode ?? "—"
             case "End TC": text.stringValue = file.endTimecode ?? "—"
             default: break
             }
             if column == "Name" { text.toolTip = file.url.path }
-            return text
+            let cell = NSTableCellView()
+            cell.textField = text
+            text.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(text)
+            NSLayoutConstraint.activate([
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
+                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
+            return cell
         }
     }
 }
