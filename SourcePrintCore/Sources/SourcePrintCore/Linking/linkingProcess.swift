@@ -103,14 +103,15 @@ public class SegmentOCFLinker {
             .sorted { Self.fileKey($0.url) < Self.fileKey($1.url) }
     }
 
-    /// A preference resolves a segment only when exactly one valid candidate lies inside the folder.
+    /// Preselect a deterministic valid candidate for review; confirmation is still required.
     public func preferredCandidate(for segment: MediaFileInfo, in files: [MediaFileInfo], folder: URL?) -> MediaFileInfo? {
-        let candidates = validCandidates(for: segment, in: files).filter { file in
+        let candidates = validCandidates(for: segment, in: files)
+        let preferred = candidates.filter { file in
             guard let folder else { return true }
             let root = folder.standardizedFileURL.resolvingSymlinksInPath().pathComponents
             return Array(file.url.standardizedFileURL.resolvingSymlinksInPath().pathComponents.prefix(root.count)) == root
         }
-        return candidates.count == 1 ? candidates[0] : nil
+        return preferred.first ?? candidates.first
     }
 
     public func linkSegments(_ segments: [MediaFileInfo], withOCFParents importedOCFs: [MediaFileInfo], manualOverrides: [String: String] = [:], manualPathOverrides: [String: String] = [:], requireTimecodeMatch: Bool = false) -> LinkingResult {

@@ -384,7 +384,7 @@ struct LinkingResultsView: View {
             if let folder = project.model.preferredOCFFolder {
                 Text(folder.path).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(folder.path)
             }
-            Text("Confirm All uses your chosen candidates first, then unique matches from the folder preference. Only shown clips with a valid choice are confirmed.")
+            Text("The first valid candidate is preselected, favouring your preferred folder. Your choices take priority. Confirm All confirms the selections for shown clips.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(.horizontal)
     }

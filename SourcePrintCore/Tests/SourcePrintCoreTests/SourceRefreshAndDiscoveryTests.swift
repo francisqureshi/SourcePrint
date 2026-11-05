@@ -221,7 +221,7 @@ final class SourceRefreshAndDiscoveryTests: XCTestCase {
         XCTAssertTrue(ambiguousLegacy.ocfParents.flatMap(\.children).allSatisfy { $0.linkConfidence == .low })
     }
 
-    func testFolderPreferenceResolvesOnlyOneValidCandidateInsideFolder() async throws {
+    func testDefaultCandidateIsStableAndFavorsPreferredFolder() async throws {
         let analyzer = MediaAnalyzer()
         let gradeURL = try movie("Grades/Camera_grade.mov", seconds: 1)
         let grade = try await analyzer.analyzeMediaFile(at: gradeURL, type: .gradedSegment)
@@ -236,14 +236,16 @@ final class SourceRefreshAndDiscoveryTests: XCTestCase {
         let folder = directory.appendingPathComponent("Sources/Preferred")
         XCTAssertEqual(linker.validCandidates(for: grade, in: sources).count, 3)
         XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources, folder: folder)?.url, sources[0].url)
-        XCTAssertNil(linker.preferredCandidate(for: grade, in: sources, folder: nil))
-        XCTAssertNil(linker.preferredCandidate(for: grade, in: sources, folder: directory))
+        XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources.reversed(), folder: nil)?.url, sources[2].url)
+        XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources, folder: directory)?.url, sources[2].url)
         let alias = directory.appendingPathComponent("PreferredAlias")
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: folder)
         XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources, folder: alias)?.url, sources[0].url)
         let duplicateURL = try movie("Sources/Preferred/Nested/Camera.mov")
         sources.append(try await analyzer.analyzeMediaFile(at: duplicateURL, type: .originalCameraFile))
-        XCTAssertNil(linker.preferredCandidate(for: grade, in: sources, folder: folder))
+        XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources.reversed(), folder: folder)?.url, sources[0].url)
+        XCTAssertEqual(linker.preferredCandidate(for: grade, in: sources, folder: directory.appendingPathComponent("Absent"))?.url, sources[2].url)
+        XCTAssertNil(linker.preferredCandidate(for: grade, in: [sources[3]], folder: folder))
         let invalidOverride = linker.linkSegments([grade], withOCFParents: sources,
             manualPathOverrides: [SegmentOCFLinker.fileKey(grade.url): SegmentOCFLinker.fileKey(wrongURL)])
         XCTAssertFalse(invalidOverride.ocfParents.flatMap(\.children).contains { $0.linkMethod == "manual" })
