@@ -177,6 +177,7 @@ struct LinkingResultsView: View {
     // Batch render functions - uses RenderQueueManager from SourcePrintCore
 
     private func renderAll() {
+        guard !project.isPublishing else { return }
         let ocfsToRender = confidentlyLinkedParents.filter { parent in
             !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
         }
@@ -188,6 +189,7 @@ struct LinkingResultsView: View {
     }
 
     private func renderModified() {
+        guard !project.isPublishing else { return }
         let modifiedOCFs = renderableParents.filter { modifiedURLs.contains($0.ocf.url) }
 
         NSLog("🔄 Starting batch render for %d modified OCFs", modifiedOCFs.count)
@@ -197,6 +199,7 @@ struct LinkingResultsView: View {
     }
 
     private func renderSelected() {
+        guard !project.isPublishing else { return }
         let selectedOCFs = confidentlyLinkedParents.filter { parent in
             selectedOCFParents.contains(parent.ocf.url)
         }.filter { parent in
@@ -210,6 +213,7 @@ struct LinkingResultsView: View {
     }
 
     private func renderSingle(parent: OCFParent) {
+        guard !project.isPublishing else { return }
         NSLog("🎬 Starting single render for: %@", parent.ocf.fileName)
         renderQueueManager.addToQueue([parent], batchName: "Render Job")
         renderQueueManager.startProcessing()
@@ -247,6 +251,7 @@ struct LinkingResultsView: View {
     }
 
     private func setupView() {
+        statusBarVM.isPublishing = project.isPublishing
         // Configure RenderQueueManager with project directories
         let configuration = RenderConfiguration(
             blankRushDirectory: project.model.blankRushDirectory,
@@ -391,6 +396,9 @@ struct LinkingResultsView: View {
                     try? await Task.sleep(for: .seconds(30))
                 }
             }
+            .onChange(of: project.isPublishing) { _, publishing in
+                statusBarVM.isPublishing = publishing
+            }
             .onChange(of: selectedOCFParents) { _, _ in
                 updateRenderButtonState()
             }
@@ -454,7 +462,8 @@ struct LinkingResultsView: View {
             }
             if showRenderLog {
                 Divider()
-                RenderHistoryDrawer(records: project.model.printHistory, sources: project.model.ocfFiles, onClose: { showRenderLog = false })
+                RenderHistoryDrawer(project: project, isRendering: renderQueueManager.isProcessing, onClose: { showRenderLog = false })
+                    .id(project.model.id)
                     .frame(minWidth: 420, idealWidth: 500, maxWidth: 560)
             }
         }
