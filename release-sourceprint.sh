@@ -51,6 +51,21 @@ if [ -z "$NOTES" ]; then
     NOTES="SourcePrint v$VERSION - Build $BUILD"
 fi
 
+# Render plain-text paragraphs and Markdown bullet lists for Sparkle.
+NOTES_HTML=$(RELEASE_NOTES_TEXT="$NOTES" python3 - <<'PYHTML'
+import html, os
+lines = os.environ["RELEASE_NOTES_TEXT"].splitlines()
+items = []
+for line in lines:
+    line = line.strip()
+    if line:
+        if line.startswith(("- ", "* ")):
+            line = line[2:]
+        items.append("<li>" + html.escape(line) + "</li>")
+print("<ul>\n" + "\n".join(items) + "\n</ul>")
+PYHTML
+)
+
 # Package the app
 echo ""
 echo -e "${BLUE}📦 Packaging app...${NC}"
@@ -136,9 +151,7 @@ NEW_ITEM="        <item>
             <title>Version $VERSION</title>
             <description><![CDATA[
                 <h2>v$VERSION</h2>
-                <ul>
-                    <li>$NOTES</li>
-                </ul>
+                $NOTES_HTML
 
                 $PREV_HISTORY
             ]]></description>
@@ -179,7 +192,17 @@ else
         echo "$NEW_ITEM"
     else
         # Insert new item after the public key comment using Perl
-        perl -i -0pe "s|(<!-- Sparkle Public Key.*?\n\n)|\$1$NEW_ITEM|s" "$APPCAST_PATH"
+        RELEASE_APPCAST_ITEM="$NEW_ITEM" python3 - <<'PYCAST'
+import os, re
+from pathlib import Path
+path = Path("appcast.xml")
+content = path.read_text()
+content, count = re.subn(r"(<!-- Sparkle Public Key.*?\n\n)",
+    lambda match: match.group(1) + os.environ["RELEASE_APPCAST_ITEM"], content, count=1, flags=re.S)
+if count != 1:
+    raise SystemExit("Could not find the appcast insertion point")
+path.write_text(content)
+PYCAST
         echo -e "${GREEN}✅ Appcast updated${NC}"
     fi
 fi
