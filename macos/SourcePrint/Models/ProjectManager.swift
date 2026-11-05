@@ -148,6 +148,10 @@ class ProjectManager: ObservableObject {
 
                 // Check for modified segments and update print status
                 viewModel.refreshPrintStatus()
+                Task { @MainActor in
+                    _ = await viewModel.refreshGradedMedia()
+                    self.saveProject(viewModel)
+                }
 
                 return viewModel
             }
@@ -196,6 +200,10 @@ class ProjectManager: ObservableObject {
                 watchFolderSettings: oldProject.watchFolderSettings
             )
 
+            Task { @MainActor in
+                _ = await viewModel.refreshGradedMedia()
+                self.saveProject(viewModel)
+            }
             NSLog("✅ Migration complete, saving in new format")
             // Save in new format for next time
             saveProject(viewModel)
@@ -537,7 +545,7 @@ class ProjectManager: ObservableObject {
         let result = linker.linkSegments(
             onlineSegments,
             withOCFParents: viewModel.model.ocfFiles,
-            manualOverrides: viewModel.model.manualLinkOverrides
+            manualPathOverrides: viewModel.model.manualLinkPaths
         )
 
         viewModel.updateLinkingResult(result)

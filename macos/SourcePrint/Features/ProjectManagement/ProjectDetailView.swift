@@ -34,7 +34,7 @@ struct ProjectDetailView: View {
                 }
                 .tag(ProjectTab.media)
 
-            LinkingTab(project: project)
+            LinkingTab(project: project, selectedTab: $selectedTab)
                 .environmentObject(projectManager)
                 .tabItem {
                     Label("Linking", systemImage: "link")

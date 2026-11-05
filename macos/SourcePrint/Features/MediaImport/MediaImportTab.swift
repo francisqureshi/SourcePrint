@@ -32,6 +32,16 @@ struct MediaImportTab: View {
             // Watch Folder Section
             WatchFolderSection(project: project)
 
+            HStack {
+                Spacer()
+                Button("Find Matching OCF…", systemImage: "folder.badge.magnifyingglass") {
+                    findMatchingOCF()
+                }
+                .disabled(isAnalyzing || project.model.segments.isEmpty)
+                .help("Search a footage folder for original camera files matching your graded clips")
+            }
+            .padding(.horizontal)
+
             let repeatedEntries = duplicateCount
             if repeatedEntries > 0 {
                 HStack {
@@ -88,6 +98,23 @@ struct MediaImportTab: View {
                 .padding(.horizontal)
             }
 
+            if let notice = project.mediaRefreshNotice {
+                Label(notice, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+            }
+
+            if !project.mediaReviewURLs.isEmpty {
+                HStack {
+                    Label("\(project.mediaReviewURLs.count) clips highlighted for review. Check their metadata and availability before rendering again.", systemImage: "eye")
+                    Spacer()
+                    Button("Clear Highlights") {
+                        project.mediaReviewURLs = []
+                        project.mediaReviewRequestID = nil
+                    }
+                }.padding(.horizontal)
+            }
+
             // Media Tables
             HSplitView {
                 // OCF Files Table
@@ -129,7 +156,10 @@ struct MediaImportTab: View {
                         showImportPicker()
                     },
                     isAnalyzing: isAnalyzing,
-                    onDropFiles: { importDroppedFiles($0, isOCF: false) }
+                    onDropFiles: { importDroppedFiles($0, isOCF: false) },
+                    reviewURLs: project.mediaReviewURLs,
+                    reviewRequestID: project.mediaReviewRequestID,
+                    unavailableURLs: project.unavailableGradeURLs
                 )
                 .frame(minWidth: 400)
             }
@@ -168,6 +198,45 @@ struct MediaImportTab: View {
         }
     }
     
+    private func findMatchingOCF() {
+        let panel = NSOpenPanel()
+        panel.title = "Find Matching OCF"
+        panel.prompt = "Search Footage"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        isAnalyzing = true
+        importNotice = nil
+        Task { @MainActor in
+            defer { isAnalyzing = false }
+            guard await project.refreshGradedMedia() else { return }
+            let segments = project.model.segments
+            statusBarVM.updateImportProgress(currentFile: 0, totalFiles: 0, fileName: "Searching footage…")
+            let discovery: MatchingOCFDiscovery.Result
+            do {
+                discovery = try await MatchingOCFDiscovery.search(folder: folder, segments: segments,
+                    existingOCFs: project.model.ocfFiles) { current, total, url in
+                    await MainActor.run {
+                        statusBarVM.updateImportProgress(currentFile: current, totalFiles: total, fileName: url.lastPathComponent)
+                    }
+                }
+            } catch {
+                statusBarVM.completeOperation(summary: "Footage search cancelled")
+                return
+            }
+            let matches = discovery.matches
+            project.addOCFFiles(matches)
+            let result = SegmentOCFLinker().linkSegments(project.model.segments,
+                withOCFParents: project.model.ocfFiles, manualPathOverrides: project.model.manualLinkPaths, requireTimecodeMatch: true)
+            project.updateLinkingResult(result)
+            projectManager.saveProject(project)
+            importNotice = "Added \(matches.count) matching OCF file(s). \(result.unmatchedSegments.count) graded clip(s) still unmatched. Review uncertain matches in Linking."
+                + (discovery.notices.isEmpty ? "" : " " + discovery.notices.joined(separator: " "))
+            statusBarVM.completeOperation(summary: "Found \(matches.count) matching OCF file(s)")
+        }
+    }
+
     private func showImportPicker() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true

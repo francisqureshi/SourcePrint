@@ -16,6 +16,71 @@ import SwiftUI
 class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDelegate {
 
     @Published var isPublishing = false
+    @Published var mediaRefreshNotice: String?
+    @Published var mediaReviewURLs: Set<URL> = []
+    @Published var mediaReviewRequestID: UUID?
+    @Published var unavailableGradeURLs: Set<URL> = []
+    private var relinkAfterMediaRefresh = false
+    private var mediaRefreshTask: Task<Bool, Never>?
+
+    @MainActor
+    func refreshGradedMedia() async -> Bool {
+        if let task = mediaRefreshTask { return await task.value }
+        let task = Task { @MainActor in
+            let snapshot = model.segments
+            let previousNotice = mediaRefreshNotice
+            var changed = false
+            var failures: [String] = []
+            var unavailable: Set<URL> = []
+            for original in snapshot {
+                do {
+                    let refreshed = try await SourceMediaRefresh.refresh(original)
+                    guard let index = model.segments.firstIndex(where: { $0.url == original.url }) else { continue }
+                    if refreshed.analyzedFingerprint != original.analyzedFingerprint {
+                        let metadataChanged = refreshed.durationInFrames != original.durationInFrames || refreshed.sourceTimecode != original.sourceTimecode || refreshed.resolution != original.resolution || refreshed.frameRateFloat != original.frameRateFloat
+                        if original.analyzedFingerprint != nil || metadataChanged {
+                            for parent in model.linkingResult?.ocfParents ?? [] where parent.children.contains(where: { $0.segment.url == original.url }) {
+                                model.invalidatedRenderURLs.insert(parent.ocf.url)
+                                if case .printed(let date, _) = model.printStatus[parent.ocf.fileName] {
+                                    model.printStatus[parent.ocf.fileName] = .needsReprint(lastPrintDate: date, reason: .segmentModified)
+                                }
+                            }
+                        }
+                        var replacement = refreshed
+                        replacement.isVFXShot = model.segments[index].isVFXShot
+                        model.segments[index] = replacement
+                        if metadataChanged {
+                            model.manualLinkOverrides.removeValue(forKey: original.fileName)
+                            model.manualLinkPaths.removeValue(forKey: SegmentOCFLinker.fileKey(original.url))
+                        }
+                        changed = true
+                    }
+                } catch {
+                    unavailable.insert(original.url)
+                    failures.append("\(original.fileName): \(error.localizedDescription)")
+                }
+            }
+            unavailableGradeURLs = unavailable
+            if !failures.isEmpty {
+                relinkAfterMediaRefresh = relinkAfterMediaRefresh || model.linkingResult != nil
+                model.linkingResult = nil
+                mediaRefreshNotice = "Could not refresh media. Finish copying or reconnect the files, then link again. " + failures.joined(separator: "\n")
+            } else {
+                mediaRefreshNotice = nil
+                if (changed && model.linkingResult != nil) || relinkAfterMediaRefresh {
+                    relinkAfterMediaRefresh = false
+                    updateLinkingResult(SegmentOCFLinker().linkSegments(model.segments,
+                        withOCFParents: model.ocfFiles, manualPathOverrides: model.manualLinkPaths))
+                }
+            }
+            if changed || previousNotice != mediaRefreshNotice { model.updateModified() }
+            return failures.isEmpty
+        }
+        mediaRefreshTask = task
+        let success = await task.value
+        mediaRefreshTask = nil
+        return success
+    }
 
     // MARK: - File Format Version
 
@@ -180,20 +245,26 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDele
     // MARK: - Manual Link Overrides
 
     /// Add or update a manual link override for a segment
-    func setManualLinkOverride(segmentFileName: String, ocfFileName: String) {
-        model.manualLinkOverrides[segmentFileName] = ocfFileName
+    @discardableResult
+    func setManualLinkOverride(segmentURL: URL, ocfURL: URL) -> Bool {
+        guard let segment = model.segments.first(where: { $0.url == segmentURL }),
+              SegmentOCFLinker().validCandidates(for: segment, in: model.ocfFiles).contains(where: { $0.url == ocfURL }) else { return false }
+        model.manualLinkPaths[SegmentOCFLinker.fileKey(segmentURL)] = SegmentOCFLinker.fileKey(ocfURL)
+        model.manualLinkOverrides.removeValue(forKey: segment.fileName)
+        model.updateModified()
+        return true
+    }
+
+    func removeManualLinkOverride(segmentURL: URL) {
+        model.manualLinkPaths.removeValue(forKey: SegmentOCFLinker.fileKey(segmentURL))
+        if let segment = model.segments.first(where: { $0.url == segmentURL }) {
+            model.manualLinkOverrides.removeValue(forKey: segment.fileName)
+        }
         model.updateModified()
     }
 
-    /// Remove a manual link override
-    func removeManualLinkOverride(segmentFileName: String) {
-        model.manualLinkOverrides.removeValue(forKey: segmentFileName)
-        model.updateModified()
-    }
-
-    /// Get the manual override for a segment, if any
-    func getManualLinkOverride(segmentFileName: String) -> String? {
-        return model.manualLinkOverrides[segmentFileName]
+    func getManualLinkOverride(segmentURL: URL) -> URL? {
+        model.manualLinkPaths[SegmentOCFLinker.fileKey(segmentURL)].map { URL(fileURLWithPath: $0) }
     }
 
     // Build once when loading saved history, then index each completed render.

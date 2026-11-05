@@ -31,6 +31,9 @@ struct MediaFileColumnTableView: View {
     let onImportAction: (() -> Void)?
     let isAnalyzing: Bool
     var onDropFiles: (([NSItemProvider]) -> Bool)? = nil
+    var reviewURLs: Set<URL> = []
+    var reviewRequestID: UUID? = nil
+    var unavailableURLs: Set<URL> = []
     @State private var isDropTargeted = false
     
     @State private var selection = Set<URL>()
@@ -69,7 +72,7 @@ struct MediaFileColumnTableView: View {
     }
 
     private func status(_ file: MediaFileInfo) -> (Int, Date) {
-        if offlineFiles.contains(file.fileName) { return (0, .distantPast) }
+        if offlineFiles.contains(file.fileName) || unavailableURLs.contains(file.url) { return (0, .distantPast) }
         if let date = modificationDates[file.fileName] { return (1, date) }
         return (2, .distantPast)
     }
@@ -255,12 +258,13 @@ struct MediaFileColumnTableView: View {
     }
     
     private var fileRowsView: some View {
+        ScrollViewReader { proxy in
         List(visibleFiles, id: \.url, selection: $selection) { file in
             MediaFileColumnRowView(
                 columns: columns,
                 file: file.toDisplayInfo(),
                 type: type,
-                isOffline: offlineFiles.contains(file.fileName),
+                isOffline: offlineFiles.contains(file.fileName) || unavailableURLs.contains(file.url),
                 modificationDate: modificationDates[file.fileName],
                 onVFXToggle: onVFXToggle,
                 columnWidths: ColumnWidths(
@@ -276,7 +280,8 @@ struct MediaFileColumnTableView: View {
                 )
             )
             .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
+            .listRowBackground(reviewURLs.contains(file.url) ? Color.accentColor.opacity(0.14) : Color.clear)
+            .id(file.url)
         }
         .overlay {
             if !searchText.isEmpty && visibleFiles.isEmpty {
@@ -290,6 +295,15 @@ struct MediaFileColumnTableView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity)
+        .task(id: reviewRequestID) {
+            guard reviewRequestID != nil else { return }
+            searchText = ""
+            selection = reviewURLs.intersection(Set(files.map(\.url)))
+            await Task.yield()
+            if let first = visibleFiles.first(where: { reviewURLs.contains($0.url) }) {
+                proxy.scrollTo(first.url, anchor: .top)
+            }
+        }
         .contextMenu(forSelectionType: URL.self) { items in
             if items.count == 1, let url = items.first,
                let file = files.first(where: { $0.url == url }),
@@ -314,6 +328,7 @@ struct MediaFileColumnTableView: View {
             }
             .foregroundColor(.red)
             .disabled(items.isEmpty)
+        }
         }
     }
     
@@ -449,16 +464,7 @@ struct MediaFileColumnRowView: View {
                     .truncationMode(.middle)
                     .foregroundColor(isOffline ? .red : .primary)
 
-                if isOffline {
-                    Text("OFFLINE")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 1)
-                        .background(Color.appBackgroundBadge)
-                        .foregroundColor(Color.appError)
-                        .cornerRadius(3)
-                } else if file.isVFX && type == .segment {
+                if !isOffline && file.isVFX && type == .segment {
                     Text("VFX")
                         .font(.caption2)
                         .fontWeight(.medium)

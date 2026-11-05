@@ -23,11 +23,15 @@ public struct ProjectModel: Codable, Identifiable {
     public var lastPrintDate: Date?
     public var printHistory: [PrintRecord]
     public var printStatus: [String: PrintStatus]
+    public var invalidatedRenderURLs: Set<URL> = []
 
     // MARK: - Manual Link Overrides
     /// Manual user overrides for low confidence matches
     /// Maps segment fileName -> OCF fileName
     public var manualLinkOverrides: [String: String]
+    /// Standardized segment path -> standardized OCF path.
+    public var manualLinkPaths: [String: String] = [:]
+    public var preferredOCFFolder: URL?
 
     // MARK: - Project Settings
     public var publishDirectory: URL?
@@ -168,7 +172,10 @@ public struct ProjectModel: Codable, Identifiable {
         case lastPrintDate
         case printHistory
         case printStatus
+        case invalidatedRenderURLs
         case manualLinkOverrides
+        case manualLinkPaths
+        case preferredOCFFolder
         case publishDirectory
         case publishHistory
         case outputDirectory
@@ -202,8 +209,23 @@ public struct ProjectModel: Codable, Identifiable {
         lastPrintDate = try container.decodeIfPresent(Date.self, forKey: .lastPrintDate)
         printHistory = try container.decode([PrintRecord].self, forKey: .printHistory)
         printStatus = try container.decode([String: PrintStatus].self, forKey: .printStatus)
+        invalidatedRenderURLs = try container.decodeIfPresent(Set<URL>.self, forKey: .invalidatedRenderURLs) ?? []
         // Decode manual link overrides with default for old files
         manualLinkOverrides = try container.decodeIfPresent([String: String].self, forKey: .manualLinkOverrides) ?? [:]
+        manualLinkPaths = try container.decodeIfPresent([String: String].self, forKey: .manualLinkPaths) ?? [:]
+        preferredOCFFolder = try container.decodeIfPresent(URL.self, forKey: .preferredOCFFolder)
+        // Migrate filename confirmations only when their identity is unambiguous.
+        for (segmentName, ocfName) in manualLinkOverrides {
+            let grades = segments.filter { $0.fileName == segmentName }
+            let originals = ocfFiles.filter { $0.fileName == ocfName }
+            if grades.count == 1, originals.count == 1 {
+                let key = SegmentOCFLinker.fileKey(grades[0].url)
+                if manualLinkPaths[key] == nil { manualLinkPaths[key] = SegmentOCFLinker.fileKey(originals[0].url) }
+            }
+        }
+        if linkingResult != nil, !manualLinkOverrides.isEmpty || !manualLinkPaths.isEmpty {
+            linkingResult = SegmentOCFLinker().linkSegments(segments, withOCFParents: ocfFiles, manualPathOverrides: manualLinkPaths)
+        }
         publishDirectory = try container.decodeIfPresent(URL.self, forKey: .publishDirectory)
         publishHistory = try container.decodeIfPresent([PublishRecord].self, forKey: .publishHistory) ?? []
         outputDirectory = try container.decode(URL.self, forKey: .outputDirectory)

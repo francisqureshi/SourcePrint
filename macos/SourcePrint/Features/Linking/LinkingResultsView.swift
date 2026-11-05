@@ -50,6 +50,7 @@ func sortedByTimecode(_ segments: [LinkedSegment]) -> [LinkedSegment] {
 
 struct LinkingResultsView: View {
     @ObservedObject var project: ProjectViewModel
+    @Binding var selectedTab: ProjectTab
     let timelineVisualizationData: [String: TimelineVisualization]
     @EnvironmentObject var projectManager: ProjectManager
     @Environment(StatusBarViewModel.self) private var statusBarVM
@@ -163,7 +164,7 @@ struct LinkingResultsView: View {
             })
         }.value
         guard !Task.isCancelled else { return }
-        modifiedURLs = changed
+        modifiedURLs = changed.union(model.invalidatedRenderURLs.intersection(Set(jobs.map { $0.0 })))
         updateRenderButtonState()
     }
 
@@ -177,50 +178,215 @@ struct LinkingResultsView: View {
     // Batch render functions - uses RenderQueueManager from SourcePrintCore
 
     private func renderAll() {
-        guard !project.isPublishing else { return }
-        showRenderLog = true
-        let ocfsToRender = confidentlyLinkedParents.filter { parent in
-            !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
-        }
-
-        NSLog("🎬 Starting batch render for %d OCFs", ocfsToRender.count)
-
-        renderQueueManager.addToQueue(ocfsToRender, batchName: "Render All")
-        renderQueueManager.startProcessing()
+        enqueueFresh(batchName: "Render All") { renderableParents }
     }
 
     private func renderModified() {
-        guard !project.isPublishing else { return }
-        showRenderLog = true
-        let modifiedOCFs = renderableParents.filter { modifiedURLs.contains($0.ocf.url) }
-
-        NSLog("🔄 Starting batch render for %d modified OCFs", modifiedOCFs.count)
-
-        renderQueueManager.addToQueue(modifiedOCFs, batchName: "Render Modified")
-        renderQueueManager.startProcessing()
+        enqueueFresh(batchName: "Render Modified") {
+            renderableParents.filter { modifiedURLs.contains($0.ocf.url) }
+        }
     }
 
     private func renderSelected() {
-        guard !project.isPublishing else { return }
-        showRenderLog = true
-        let selectedOCFs = confidentlyLinkedParents.filter { parent in
-            selectedOCFParents.contains(parent.ocf.url)
-        }.filter { parent in
-            !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
+        enqueueFresh(batchName: "Render Selected") {
+            renderableParents.filter { selectedOCFParents.contains($0.ocf.url) }
         }
-
-        NSLog("🎬 Starting batch render for %d selected OCFs", selectedOCFs.count)
-
-        renderQueueManager.addToQueue(selectedOCFs, batchName: "Render Selected")
-        renderQueueManager.startProcessing()
     }
 
     private func renderSingle(parent: OCFParent) {
-        guard !project.isPublishing else { return }
+        enqueueFresh(batchName: "Render Job") {
+            renderableParents.filter { $0.ocf.url == parent.ocf.url }
+        }
+    }
+
+    @State private var isCheckingSources = false
+    private struct RenderChangeReview: Identifiable {
+        let id = UUID()
+        let changes: [SourceMediaRefresh.Change]
+        let unavailable: [SourceMediaRefresh.Unavailable]
+        let review: () -> Void
+    }
+    @State private var pendingReview: RenderChangeReview?
+
+    private func enqueueFresh(batchName: String, parents: @escaping () -> [OCFParent]) {
+        guard !project.isPublishing, !isCheckingSources else { return }
         showRenderLog = true
-        NSLog("🎬 Starting single render for: %@", parent.ocf.fileName)
-        renderQueueManager.addToQueue([parent], batchName: "Render Job")
-        renderQueueManager.startProcessing()
+        isCheckingSources = true
+        Task { @MainActor in
+            defer { isCheckingSources = false }
+            do {
+                let inspection = try await SourceMediaRefresh.inspect(project.model.segments)
+                let changes = inspection.changes
+                if !inspection.canRender || !changes.isEmpty {
+                    pendingReview = RenderChangeReview(changes: changes, unavailable: inspection.unavailable) {
+                        Task { @MainActor in
+                            project.mediaReviewURLs = Set(changes.map(\.id) + inspection.unavailable.map(\.id))
+                            project.mediaReviewRequestID = UUID()
+                            _ = await project.refreshGradedMedia()
+                            projectManager.saveProject(project)
+                            selectedTab = .media
+                        }
+                    }
+                    return
+                }
+                guard !project.isPublishing else { return }
+                let requestedSegments = Set(parents().flatMap { $0.children.map { $0.segment.url } })
+                await refreshModifiedJobs()
+                projectManager.saveProject(project)
+                let refreshedParents = parents()
+                let availableSegments = Set(refreshedParents.flatMap { $0.children.map { $0.segment.url } })
+                guard !refreshedParents.isEmpty, requestedSegments.isSubset(of: availableSegments) else {
+                    project.mediaRefreshNotice = "Changed clips no longer match the requested jobs. Review the links before rendering."
+                    return
+                }
+                renderQueueManager.addToQueue(refreshedParents, batchName: batchName)
+                renderQueueManager.startProcessing()
+            } catch {
+                project.mediaRefreshNotice = "Cannot check graded clips: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private struct SourceChangeRow: Identifiable {
+        let url: URL
+        let clip: String
+        let field: String
+        let before: String
+        let after: String
+        var blocked: Bool = false
+        var explanation: String = ""
+        var id: String { url.absoluteString + "|" + field }
+    }
+
+    private func sourceChangesSheet(_ review: RenderChangeReview) -> some View {
+        let blocked = !review.unavailable.isEmpty
+        let rows = review.unavailable.map { issue in
+            SourceChangeRow(url: issue.id, clip: issue.original.fileName, field: "Availability",
+                            before: "Imported", after: issue.status, blocked: true, explanation: issue.message)
+        } + review.changes.flatMap { change in
+            change.differences.map { difference in
+                SourceChangeRow(url: change.id, clip: change.original.fileName,
+                                field: difference.field, before: difference.before, after: difference.after)
+            }
+        }
+        return VStack(alignment: .leading, spacing: 16) {
+            Label(blocked ? "Graded clips need attention" : "Review graded clips", systemImage: "exclamationmark.triangle.fill")
+                .font(.title2)
+            Text(blocked
+                 ? "Rendering is blocked. Choose Review to locate the highlighted clips in Media and reconnect or replace unavailable files."
+                 : "Rendering is paused. Choose Review to refresh the metadata and inspect the highlighted clips in Media before rendering again.")
+                .foregroundStyle(.secondary)
+            if rows.isEmpty {
+                Text("All graded clips are available and up to date.").foregroundStyle(.secondary)
+            }
+            Table(rows) {
+                TableColumn("Clip") { row in
+                    Text(row.clip).lineLimit(1).foregroundStyle(row.blocked ? Color.red : Color.primary).help(row.url.path)
+                }.width(min: 180, ideal: 250)
+                TableColumn("Changed field", value: \.field).width(130)
+                TableColumn("Before") { row in
+                    Text(row.before).monospacedDigit()
+                }.width(min: 110, ideal: 140)
+                TableColumn("After") { row in
+                    Text(row.after).monospacedDigit().foregroundStyle(row.blocked ? Color.red : Color.primary)
+                        .help(row.explanation)
+                }.width(min: 110, ideal: 160)
+            }
+            .tableStyle(.inset(alternatesRowBackgrounds: true))
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    pendingReview = nil
+                }.keyboardShortcut(.cancelAction)
+                Button("Review") {
+                    pendingReview = nil
+                    review.review()
+                }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 820, height: 420)
+    }
+
+    @State private var candidateChoices: [URL: URL] = [:]
+    @State private var inspectedGrade: URL?
+
+    private var effectiveCandidateChoices: [URL: URL] {
+        var result: [URL: URL] = [:]
+        let linker = SegmentOCFLinker()
+        for child in lowConfidenceSegments {
+            let grade = child.segment
+            if let chosen = candidateChoices[grade.url] {
+                // An explicit choice takes precedence, but must still be a valid candidate.
+                result[grade.url] = linker.validCandidates(for: grade, in: project.model.ocfFiles)
+                    .first(where: { $0.url == chosen })?.url
+            } else {
+                result[grade.url] = linker.preferredCandidate(for: grade,
+                    in: project.model.ocfFiles, folder: project.model.preferredOCFFolder)?.url
+            }
+        }
+        return result
+    }
+
+    private var bulkConfirmationPairs: [(segment: URL, ocf: URL)] {
+        let choices = effectiveCandidateChoices
+        return lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }.compactMap { child in
+            guard let candidate = choices[child.segment.url] else { return nil }
+            return (child.segment.url, candidate)
+        }
+    }
+
+    private func choosePreferredOCFFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Prefer OCFs from this folder"
+        panel.prompt = "Use Folder"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = project.model.preferredOCFFolder
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        project.model.preferredOCFFolder = folder
+        project.updateModified()
+        projectManager.saveProject(project)
+    }
+
+    private var bulkConfirmationControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button("Prefer Folder…", action: choosePreferredOCFFolder)
+                if project.model.preferredOCFFolder != nil {
+                    Button("Clear") {
+                        project.model.preferredOCFFolder = nil
+                        project.updateModified()
+                        projectManager.saveProject(project)
+                    }
+                }
+                Spacer()
+                Button("Confirm Link") {
+                    guard let grade = inspectedGrade, let ocf = effectiveCandidateChoices[grade],
+                          project.setManualLinkOverride(segmentURL: grade, ocfURL: ocf) else { return }
+                    projectManager.saveProject(project)
+                    project.performLinkingCallback?()
+                    inspectedGrade = nil
+                }
+                .disabled(inspectedGrade.flatMap { effectiveCandidateChoices[$0] } == nil)
+                Button("Confirm All (\(bulkConfirmationPairs.count))") {
+                    let pairs = bulkConfirmationPairs
+                    for pair in pairs {
+                        project.setManualLinkOverride(segmentURL: pair.segment, ocfURL: pair.ocf)
+                    }
+                    projectManager.saveProject(project)
+                    project.performLinkingCallback?()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(bulkConfirmationPairs.isEmpty)
+            }
+            if let folder = project.model.preferredOCFFolder {
+                Text(folder.path).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(folder.path)
+            }
+            Text("Confirm All uses your chosen candidates first, then unique matches from the folder preference. Only shown clips with a valid choice are confirmed.")
+                .font(.caption).foregroundStyle(.secondary)
+        }.padding(.horizontal)
     }
 
     private func cancelCurrentOperation() {
@@ -324,6 +490,8 @@ struct LinkingResultsView: View {
                     date: Date(), url: blankRushURL)
             }
 
+            if let url = result.ocfURL { project.model.invalidatedRenderURLs.remove(url) }
+
             // Update print status
             if let outputURL = result.outputURL {
                 project.model.printStatus[result.ocfFileName] = .printed(
@@ -386,6 +554,14 @@ struct LinkingResultsView: View {
 
     var body: some View {
         contentWithKeyboardHandling
+            .sheet(item: $pendingReview) { review in sourceChangesSheet(review) }
+            .safeAreaInset(edge: .top) {
+                if let notice = project.mediaRefreshNotice {
+                    Label(notice, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .padding()
+                }
+            }
             .onReceive(renderQueueManager.$lastCompletedResult.dropFirst(), perform: handleRenderCompletedChange)
             .onReceive(renderQueueManager.$isProcessing.dropFirst(), perform: handleProcessingChange)
             .onReceive(renderQueueManager.$currentItem) { item in
@@ -395,10 +571,10 @@ struct LinkingResultsView: View {
                 handleCurrentItemChange(item)
             }
             .task(id: project.model.lastModified) {
-                while !Task.isCancelled {
-                    await refreshModifiedJobs()
-                    try? await Task.sleep(for: .seconds(30))
-                }
+                await refreshModifiedJobs()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task { await refreshModifiedJobs() }
             }
             .onChange(of: project.isPublishing) { _, publishing in
                 statusBarVM.isPublishing = publishing
@@ -827,78 +1003,32 @@ struct LinkingResultsView: View {
                         .textFieldStyle(.roundedBorder)
                         .padding(.horizontal)
 
+                    if !lowConfidenceSegments.isEmpty { bulkConfirmationControls }
+
                     let segments = (linkingResult?.unmatchedSegments ?? []).filter { matchesUnmatchedSearch($0) }
                     let ocfs = (linkingResult?.unmatchedOCFs ?? []).filter { matchesUnmatchedSearch($0) }
                     let lowConfidence = lowConfidenceSegments.filter { matchesUnmatchedSearch($0.segment) }
-                    List(selection: $selectedUnmatchedFiles) {
-                        // Low Confidence Matches
-                        if !lowConfidence.isEmpty {
-                            Section("Low Confidence Matches (\(lowConfidence.count))") {
-                                ForEach(lowConfidence, id: \.segment.fileName) {
-                                    linkedSegment in
-                                    LowConfidenceSegmentRowView(
-                                        linkedSegment: linkedSegment,
-                                        availableOCFs: project.model.ocfFiles,
-                                        project: project,
-                                        onLinkConfirmed: {
-                                            // Trigger re-linking to apply manual override
-                                            project.performLinkingCallback?()
-                                        }
-                                    )
-                                    .environmentObject(projectManager)
-                                    .tag(linkedSegment.segment.fileName)
-                                }
+                    MatchReviewOutline(
+                        grades: lowConfidence.map(\.segment), unmatchedGrades: segments,
+                        unmatchedOCFs: ocfs, originals: project.model.ocfFiles,
+                        choices: effectiveCandidateChoices,
+                        onChoose: { grade, ocf in
+                            candidateChoices[grade] = ocf
+                            inspectedGrade = grade
+                        },
+                        onInspect: { inspectedGrade = $0 }
+                    )
+                    if !ocfs.isEmpty {
+                        HStack {
+                            Text("Unmatched OCFs (\(ocfs.count))").foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Clear", systemImage: "trash", role: .destructive) {
+                                removeUnmatchedOCFFiles(ocfs)
                             }
-                        }
-
-                        // Unmatched graded segments need attention before unmatched OCFs
-                        if !segments.isEmpty {
-                            Section {
-                                ForEach(segments, id: \.fileName) {
-                                    segment in
-                                    UnmatchedFileRowView(file: segment, type: .segment)
-                                        .tag(segment.fileName)
-                                }
-                            } header: {
-                                Label("Unmatched Segments (\(segments.count))", systemImage: "exclamationmark.triangle.fill")
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(AppTheme.error)
-                                    .monospacedDigit()
-                            }
-                        }
-
-                        // Unmatched OCF Files
-                        if !ocfs.isEmpty {
-                            Section {
-                                ForEach(ocfs, id: \.fileName) { ocf in
-                                    UnmatchedFileRowView(file: ocf, type: .ocf)
-                                        .tag(ocf.fileName)
-                                }
-                            } header: {
-                                HStack {
-                                    Text(
-                                        "Unmatched OCF Files (\(ocfs.count))"
-                                    )
-                                    .monospacedDigit()
-
-                                    Spacer()
-
-                                    Button("Clear", systemImage: "trash", role: .destructive) {
-                                        removeUnmatchedOCFFiles(ocfs)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .tint(AppTheme.error)
-                                    .textCase(nil)
-                                    .accessibilityLabel("Remove unmatched OCF files")
-                                    .help("Remove the shown unmatched OCF entries from this project. Files on disk are kept.")
-                                    .fixedSize()
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-
-
+                            .help("Remove shown unmatched OCF entries. Files on disk are kept.")
+                        }.padding(.horizontal).padding(.bottom, 8)
                     }
+
                 }
                 .frame(minWidth: 300)
                 .transition(.move(edge: .trailing).combined(with: .opacity))

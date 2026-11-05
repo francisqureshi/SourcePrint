@@ -168,12 +168,12 @@ struct TreeLinkedSegmentRowView: View {
 
             // Unlink (manual links only)
             if linkedSegment.linkMethod == "manual"
-                || project.getManualLinkOverride(segmentFileName: linkedSegment.segment.fileName)
+                || project.getManualLinkOverride(segmentURL: linkedSegment.segment.url)
                     != nil
             {
                 Button(action: {
                     project.removeManualLinkOverride(
-                        segmentFileName: linkedSegment.segment.fileName)
+                        segmentURL: linkedSegment.segment.url)
                     projectManager.saveProject(project)
                     onUnlink?()
                 }) {
@@ -213,203 +213,98 @@ struct TreeLinkedSegmentRowView: View {
 struct LowConfidenceSegmentRowView: View {
     let linkedSegment: LinkedSegment
     let availableOCFs: [MediaFileInfo]
-    let project: ProjectViewModel
+    @ObservedObject var project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
     var onLinkConfirmed: (() -> Void)?
+    @State private var selectedOCFURL: URL?
 
-    @State private var selectedOCFName: String?
-    @State private var isLinked: Bool = false
+    private var candidates: [MediaFileInfo] {
+        SegmentOCFLinker().validCandidates(for: linkedSegment.segment, in: availableOCFs)
+    }
 
-    // Check if this is a VFX shot
-    private var isVFXShot: Bool {
-        linkedSegment.segment.isVFX
+    /// Keep the common parent name for context and enough suffix to distinguish every location.
+    private func candidateFolder(_ url: URL) -> String {
+        let folders = candidates.map { $0.url.deletingLastPathComponent().pathComponents }
+        let current = url.deletingLastPathComponent().pathComponents
+        var shared = 0
+        while shared < current.count, folders.allSatisfy({ $0.count > shared && $0[shared] == current[shared] }) {
+            shared += 1
+        }
+        return current.dropFirst(max(1, shared - 1)).joined(separator: "/")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "questionmark.circle.fill")
-                    .foregroundColor(.red)
-                    .frame(width: 16)
-
-                Image(systemName: "film")
-                    .foregroundColor(AppTheme.segmentColor)
-                    .frame(width: 16)
-
-                // VFX indicator
-                if isVFXShot {
-                    Image(systemName: "wand.and.stars")
-                        .foregroundColor(.purple)
-                        .frame(width: 16)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(linkedSegment.segment.fileName)
-                            .font(.body)
-
-                        // VFX badge
-                        if isVFXShot {
-                            Text("VFX")
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.appBackgroundBadge)
-                                .foregroundColor(Color.appVfxShot)
-                                .cornerRadius(3)
-                        }
-                    }
-
-                    HStack {
-                        HStack(spacing: 4) {
-                            ForEach(formatLinkMethodBadges(linkedSegment.linkMethod), id: \.self) {
-                                badge in
-                                Text(badge)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(Color.appBackgroundBadge)
-                                    .cornerRadius(3)
-                            }
-                        }
-                        if let startTC = linkedSegment.segment.sourceTimecode,
-                            let endTC = linkedSegment.segment.endTimecode
-                        {
-                            Text("•")
-                            Text("\(startTC) - \(endTC)")
-                                .monospacedDigit()
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                }
-
-                Spacer()
-            }
-
-            // Resolution controls
-            HStack(spacing: 12) {
-                if isLinked, let ocfName = selectedOCFName {
-                    // Show linked status with edit button
-                    HStack(spacing: 8) {
-                        Image(systemName: "link")
-                            .foregroundColor(.green)
-                            .font(.system(size: 12))
-
-                        Text("Linked to: \(ocfName)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Button(action: {
-                            isLinked = false
-                        }) {
-                            Text("Change")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(.blue)
-                    }
-                } else {
-                    // Show dropdown and link button
-                    HStack(spacing: 8) {
-                        Text("Link to:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Picker("", selection: $selectedOCFName) {
-                            Text("Select OCF...").tag(nil as String?)
-                            ForEach(availableOCFs, id: \.fileName) { ocf in
-                                Text(ocf.fileName).tag(ocf.fileName as String?)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 200)
-
-                        Button(action: {
-                            if let ocfName = selectedOCFName {
-                                project.setManualLinkOverride(
-                                    segmentFileName: linkedSegment.segment.fileName,
-                                    ocfFileName: ocfName
-                                )
-                                projectManager.saveProject(project)
-                                isLinked = true
-                                NSLog(
-                                    "📌 Manual link: \(linkedSegment.segment.fileName) → \(ocfName)")
-
-                                // Trigger re-linking to move segment to linked OCF
-                                onLinkConfirmed?()
-                            }
-                        }) {
-                            Text("Confirm Link")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(selectedOCFName == nil)
-                    }
-                }
-            }
-            .padding(.leading, 32)
-        }
-        .onAppear {
-            // Check if there's already a manual override
-            if let existingOverride = project.getManualLinkOverride(
-                segmentFileName: linkedSegment.segment.fileName)
-            {
-                selectedOCFName = existingOverride
-                isLinked = true
+        VStack(alignment: .leading, spacing: 10) {
+            Label(linkedSegment.segment.fileName, systemImage: "questionmark.circle.fill")
+                .font(.headline)
+                .help(linkedSegment.segment.url.path)
+            Text("\(candidates.count) valid candidate\(candidates.count == 1 ? "" : "s") · matching resolution, FPS and timecode range")
+                .font(.caption).foregroundStyle(.secondary)
+            if candidates.isEmpty {
+                Text("No valid candidates. Check the media metadata and link again.")
+                    .font(.caption).foregroundStyle(.red)
             } else {
-                // Suggest best match from available OCFs
-                selectedOCFName = suggestBestMatch()
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                    GridRow {
+                        Text("Choose")
+                        Text("OCF filename")
+                        Text("Folder")
+                        Text("Reveal")
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                    ForEach(candidates, id: \.url) { ocf in
+                        GridRow {
+                            Button {
+                                selectedOCFURL = ocf.url
+                            } label: {
+                                Image(systemName: selectedOCFURL == ocf.url ? "largecircle.fill.circle" : "circle")
+                                    .foregroundStyle(selectedOCFURL == ocf.url ? Color.accentColor : Color.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Choose \(ocf.fileName) in \(candidateFolder(ocf.url))")
+                            .accessibilityValue(selectedOCFURL == ocf.url ? "Selected" : "Not selected")
+                            Text(ocf.fileName)
+                                .lineLimit(1).truncationMode(.middle)
+                                .help(ocf.url.path)
+                            Text(candidateFolder(ocf.url))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .help(ocf.url.deletingLastPathComponent().path)
+                            Button {
+                                NSWorkspace.shared.selectFile(ocf.url.path, inFileViewerRootedAtPath: "")
+                            } label: {
+                                Image(systemName: "folder").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Reveal in Finder")
+                            .accessibilityLabel("Reveal \(ocf.fileName) in Finder")
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+
+            }
+            HStack {
+                Spacer()
+                Button("Confirm Link") {
+                    guard let url = selectedOCFURL,
+                          project.setManualLinkOverride(segmentURL: linkedSegment.segment.url, ocfURL: url) else { return }
+                    projectManager.saveProject(project)
+                    onLinkConfirmed?()
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small)
+                .disabled(!candidates.contains(where: { $0.url == selectedOCFURL }))
             }
         }
-    }
-
-    private func suggestBestMatch() -> String? {
-        // Find OCF with matching resolution, frame rate, and filename similarity
-        guard let segmentRes = linkedSegment.segment.effectiveDisplayResolution,
-            let segmentFR = linkedSegment.segment.frameRate
-        else {
-            return availableOCFs.first?.fileName
+        .padding(.vertical, 6)
+        .task(id: candidates.map { $0.url.path }.joined(separator: "|") + (project.model.preferredOCFFolder?.path ?? "")) {
+            let existing = project.getManualLinkOverride(segmentURL: linkedSegment.segment.url)
+            selectedOCFURL = candidates.first(where: { $0.url == existing })?.url
+                ?? SegmentOCFLinker().preferredCandidate(for: linkedSegment.segment, in: availableOCFs,
+                    folder: project.model.preferredOCFFolder)?.url
         }
-
-        let segmentNameLower = linkedSegment.segment.fileNameLower
-
-        // First try: Look for filename match + tech specs match
-        let filenameMatch = availableOCFs.first { ocf in
-            guard let ocfRes = ocf.effectiveDisplayResolution,
-                let ocfFR = ocf.frameRate
-            else {
-                return false
-            }
-
-            let ocfBaseName = (ocf.fileName as NSString).deletingPathExtension
-            let ocfBaseNameLower = ocfBaseName.lowercased()
-            let hasFilenameMatch = segmentNameLower.contains(ocfBaseNameLower)
-
-            return hasFilenameMatch && segmentRes.width == ocfRes.width
-                && segmentRes.height == ocfRes.height
-                && FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
-        }
-
-        if let match = filenameMatch {
-            return match.fileName
-        }
-
-        // Second try: Just tech specs match (no filename requirement)
-        let techMatch = availableOCFs.first { ocf in
-            guard let ocfRes = ocf.effectiveDisplayResolution,
-                let ocfFR = ocf.frameRate
-            else {
-                return false
-            }
-
-            return segmentRes.width == ocfRes.width && segmentRes.height == ocfRes.height
-                && FrameRateManager.areFrameRatesCompatible(segmentFR, ocfFR)
-        }
-
-        return techMatch?.fileName ?? availableOCFs.first?.fileName
     }
 }
 
@@ -563,5 +458,146 @@ struct OCFParentRowView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+// Native outline keeps candidate selection independent from the highlighted inspection row.
+struct MatchReviewOutline: NSViewRepresentable {
+    let grades: [MediaFileInfo]
+    let unmatchedGrades: [MediaFileInfo]
+    let unmatchedOCFs: [MediaFileInfo]
+    let originals: [MediaFileInfo]
+    let choices: [URL: URL]
+    var onChoose: (URL, URL) -> Void
+    var onInspect: (URL?) -> Void
+
+    final class Node: NSObject {
+        let file: MediaFileInfo
+        let grade: URL?
+        let status: String
+        let key: String
+        var children: [Node] = []
+        init(_ file: MediaFileInfo, grade: URL?, status: String, key: String) {
+            self.file = file; self.grade = grade; self.status = status; self.key = key
+        }
+    }
+    final class ActionButton: NSButton {
+        var actionBlock: (() -> Void)?
+        @objc func runAction() { actionBlock?() }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        let table = NSOutlineView()
+        table.headerView = NSTableHeaderView()
+        table.rowHeight = 26
+        table.usesAlternatingRowBackgroundColors = true
+        table.style = .fullWidth
+        table.allowsMultipleSelection = false
+        table.columnAutoresizingStyle = .noColumnAutoresizing
+        for (name, width) in [("Name", 260.0), ("Choose", 60.0), ("Folder", 210.0), ("Status", 130.0), ("Resolution", 100.0), ("FPS", 65.0), ("Start TC", 110.0), ("End TC", 110.0), ("Reveal", 55.0)] {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(name))
+            column.title = name; column.width = width; column.minWidth = 45
+            column.resizingMask = .userResizingMask
+            table.addTableColumn(column)
+        }
+        table.outlineTableColumn = table.tableColumns.first
+        table.delegate = context.coordinator; table.dataSource = context.coordinator
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
+        context.coordinator.table = table
+        return scroll
+    }
+    func updateNSView(_ view: NSScrollView, context: Context) {
+        context.coordinator.update(self)
+    }
+    final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
+        var parent: MatchReviewOutline
+        weak var table: NSOutlineView?
+        var roots: [Node] = []
+        var signature = ""
+        var rebuilding = false
+        init(_ parent: MatchReviewOutline) { self.parent = parent }
+        func update(_ next: MatchReviewOutline) {
+            parent = next
+            guard let table else { return }
+            let linker = SegmentOCFLinker()
+            let nextRoots = next.grades.map { grade -> Node in
+                let candidates = linker.validCandidates(for: grade, in: next.originals)
+                let node = Node(grade, grade: grade.url, status: "\(candidates.count) candidates", key: "grade|\(grade.url.path)")
+                node.children = candidates.map { Node($0, grade: grade.url, status: "Valid candidate", key: "\(grade.url.path)|\($0.url.path)") }
+                return node
+            } + next.unmatchedGrades.map { Node($0, grade: nil, status: "Unmatched grade", key: "unmatched|\($0.url.path)") }
+              + next.unmatchedOCFs.map { Node($0, grade: nil, status: "Unmatched OCF", key: "ocf|\($0.url.path)") }
+            let nextSignature = nextRoots.flatMap { [$0.key] + $0.children.map(\.key) }.joined(separator: "\n")
+            if nextSignature == signature {
+                table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<table.numberOfRows), columnIndexes: IndexSet(integer: 1))
+                return
+            }
+            rebuilding = true
+            let expanded = Set(roots.filter { table.isItemExpanded($0) }.map(\.key))
+            let known = Set(roots.map(\.key))
+            let selected = (table.item(atRow: table.selectedRow) as? Node)?.key
+            roots = nextRoots; signature = nextSignature
+            table.reloadData()
+            for node in roots where expanded.contains(node.key) || !known.contains(node.key) { table.expandItem(node) }
+            if let node = (roots + roots.flatMap(\.children)).first(where: { $0.key == selected }), table.row(forItem: node) >= 0 {
+                table.selectRowIndexes(IndexSet(integer: table.row(forItem: node)), byExtendingSelection: false)
+            }
+            rebuilding = false
+        }
+        func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { (item as? Node)?.children.count ?? roots.count }
+        func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { (item as? Node)?.children[index] ?? roots[index] }
+        func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { !(item as! Node).children.isEmpty }
+        func outlineViewSelectionDidChange(_ notification: Notification) {
+            guard !rebuilding, let table else { return }
+            parent.onInspect((table.item(atRow: table.selectedRow) as? Node)?.grade)
+        }
+        func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+            guard let node = item as? Node, let column = tableColumn?.identifier.rawValue else { return nil }
+            let file = node.file
+            if column == "Reveal" || (column == "Choose" && node.status == "Valid candidate") {
+                let button = ActionButton()
+                button.target = button; button.action = #selector(ActionButton.runAction)
+                if column == "Reveal" {
+                    button.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Reveal in Finder")
+                    button.isBordered = false
+                    button.toolTip = "Reveal in Finder — \(file.url.path)"
+                    button.actionBlock = { NSWorkspace.shared.selectFile(file.url.path, inFileViewerRootedAtPath: "") }
+                } else if let grade = node.grade {
+                    button.setButtonType(.radio); button.title = ""
+                    button.state = parent.choices[grade] == file.url ? .on : .off
+                    button.setAccessibilityLabel("Choose \(file.fileName) in \(file.url.deletingLastPathComponent().path)")
+                    button.actionBlock = { [weak self] in self?.parent.onChoose(grade, file.url) }
+                }
+                return button
+            }
+            let text = NSTextField(labelWithString: "")
+            text.lineBreakMode = .byTruncatingMiddle
+            text.font = .systemFont(ofSize: NSFont.systemFontSize)
+            switch column {
+            case "Name": text.stringValue = file.fileName; if !node.children.isEmpty { text.font = .boldSystemFont(ofSize: NSFont.systemFontSize) }
+            case "Folder":
+                text.stringValue = file.url.deletingLastPathComponent().pathComponents.suffix(3).joined(separator: "/")
+                text.toolTip = file.url.deletingLastPathComponent().path
+            case "Status": text.stringValue = node.status; if node.status == "Unmatched grade" { text.textColor = .systemRed }
+            case "Resolution": text.stringValue = file.resolution.map { String(format: "%.0f×%.0f", $0.width, $0.height) } ?? "—"
+            case "FPS": text.stringValue = String(format: "%.3f", file.frameRateFloat ?? 0)
+            case "Start TC": text.stringValue = file.sourceTimecode ?? "—"
+            case "End TC": text.stringValue = file.endTimecode ?? "—"
+            default: break
+            }
+            if column == "Name" { text.toolTip = file.url.path }
+            let cell = NSTableCellView()
+            cell.textField = text
+            text.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(text)
+            NSLayoutConstraint.activate([
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
+                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
+            return cell
+        }
     }
 }
