@@ -36,7 +36,14 @@
 
                 <h2>v0.4.0</h2>
                 <ul>
-                    <li>Adds batch-grouped render history and publishing of verified outputs to a configured Publish Folder, with Publish All and per-job actions. Adds Render Modified and Render Selected alongside Render All. Improves scrolling responsiveness during rendering, media search, column resizing and sorting, and handling of duplicate paths and same-named files. Adds drag-and-drop media import, consistent blue action controls, and an Unmatched Items toolbar drawer with prioritised review sections and a visible Clear action for unmatched OCF entries. Render actions now open the render log automatically.</li>
+                    <li><strong>Render history:</strong> Review render attempts grouped by batch, with timestamps and output details.</li>
+                    <li><strong>Publishing:</strong> Publish all verified outputs or individual jobs to your chosen Publish Folder.</li>
+                    <li><strong>Render controls:</strong> Use Render Modified or Render Selected alongside Render All. Starting a render opens the Render Log.</li>
+                    <li><strong>Smoother scrolling:</strong> Improved UI responsiveness while rendering.</li>
+                    <li><strong>Media tables:</strong> Search clips, resize columns, sort by column headers, and drag files in to import.</li>
+                    <li><strong>File matching:</strong> Improved handling of duplicate paths and files with the same name.</li>
+                    <li><strong>Unmatched Items:</strong> Open the drawer from the toolbar, review priority items first, and clear unmatched OCF entries with a visible button.</li>
+                    <li><strong>Consistent styling:</strong> Native blue action buttons and clearer status colours.</li>
                 </ul>
 
                 <h2>v0.3.9</h2>
@@ -121,7 +128,14 @@
             <description><![CDATA[
                 <h2>v0.4.0</h2>
                 <ul>
-                    <li>Adds batch-grouped render history and publishing of verified outputs to a configured Publish Folder, with Publish All and per-job actions. Adds Render Modified and Render Selected alongside Render All. Improves scrolling responsiveness during rendering, media search, column resizing and sorting, and handling of duplicate paths and same-named files. Adds drag-and-drop media import, consistent blue action controls, and an Unmatched Items toolbar drawer with prioritised review sections and a visible Clear action for unmatched OCF entries. Render actions now open the render log automatically.</li>
+                    <li><strong>Render history:</strong> Review render attempts grouped by batch, with timestamps and output details.</li>
+                    <li><strong>Publishing:</strong> Publish all verified outputs or individual jobs to your chosen Publish Folder.</li>
+                    <li><strong>Render controls:</strong> Use Render Modified or Render Selected alongside Render All. Starting a render opens the Render Log.</li>
+                    <li><strong>Smoother scrolling:</strong> Improved UI responsiveness while rendering.</li>
+                    <li><strong>Media tables:</strong> Search clips, resize columns, sort by column headers, and drag files in to import.</li>
+                    <li><strong>File matching:</strong> Improved handling of duplicate paths and files with the same name.</li>
+                    <li><strong>Unmatched Items:</strong> Open the drawer from the toolbar, review priority items first, and clear unmatched OCF entries with a visible button.</li>
+                    <li><strong>Consistent styling:</strong> Native blue action buttons and clearer status colours.</li>
                 </ul>
 
                 <h2>v0.3.9</h2>
