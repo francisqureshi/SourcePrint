@@ -163,7 +163,7 @@ struct LinkingResultsView: View {
             })
         }.value
         guard !Task.isCancelled else { return }
-        modifiedURLs = changed
+        modifiedURLs = changed.union(model.invalidatedRenderURLs.intersection(Set(jobs.map { $0.0 })))
         updateRenderButtonState()
     }
 
@@ -177,50 +177,37 @@ struct LinkingResultsView: View {
     // Batch render functions - uses RenderQueueManager from SourcePrintCore
 
     private func renderAll() {
-        guard !project.isPublishing else { return }
-        showRenderLog = true
-        let ocfsToRender = confidentlyLinkedParents.filter { parent in
-            !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
-        }
-
-        NSLog("🎬 Starting batch render for %d OCFs", ocfsToRender.count)
-
-        renderQueueManager.addToQueue(ocfsToRender, batchName: "Render All")
-        renderQueueManager.startProcessing()
+        enqueueFresh(batchName: "Render All") { renderableParents }
     }
 
     private func renderModified() {
-        guard !project.isPublishing else { return }
-        showRenderLog = true
-        let modifiedOCFs = renderableParents.filter { modifiedURLs.contains($0.ocf.url) }
-
-        NSLog("🔄 Starting batch render for %d modified OCFs", modifiedOCFs.count)
-
-        renderQueueManager.addToQueue(modifiedOCFs, batchName: "Render Modified")
-        renderQueueManager.startProcessing()
+        enqueueFresh(batchName: "Render Modified") {
+            renderableParents.filter { modifiedURLs.contains($0.ocf.url) }
+        }
     }
 
     private func renderSelected() {
-        guard !project.isPublishing else { return }
-        showRenderLog = true
-        let selectedOCFs = confidentlyLinkedParents.filter { parent in
-            selectedOCFParents.contains(parent.ocf.url)
-        }.filter { parent in
-            !project.model.offlineMediaFiles.contains(parent.ocf.fileName)
+        enqueueFresh(batchName: "Render Selected") {
+            renderableParents.filter { selectedOCFParents.contains($0.ocf.url) }
         }
-
-        NSLog("🎬 Starting batch render for %d selected OCFs", selectedOCFs.count)
-
-        renderQueueManager.addToQueue(selectedOCFs, batchName: "Render Selected")
-        renderQueueManager.startProcessing()
     }
 
     private func renderSingle(parent: OCFParent) {
+        enqueueFresh(batchName: "Render Job") {
+            renderableParents.filter { $0.ocf.url == parent.ocf.url }
+        }
+    }
+
+    private func enqueueFresh(batchName: String, parents: @escaping () -> [OCFParent]) {
         guard !project.isPublishing else { return }
         showRenderLog = true
-        NSLog("🎬 Starting single render for: %@", parent.ocf.fileName)
-        renderQueueManager.addToQueue([parent], batchName: "Render Job")
-        renderQueueManager.startProcessing()
+        Task { @MainActor in
+            guard await project.refreshGradedMedia(), !project.isPublishing else { return }
+            await refreshModifiedJobs()
+            projectManager.saveProject(project)
+            renderQueueManager.addToQueue(parents(), batchName: batchName)
+            renderQueueManager.startProcessing()
+        }
     }
 
     private func cancelCurrentOperation() {
@@ -324,6 +311,8 @@ struct LinkingResultsView: View {
                     date: Date(), url: blankRushURL)
             }
 
+            if let url = result.ocfURL { project.model.invalidatedRenderURLs.remove(url) }
+
             // Update print status
             if let outputURL = result.outputURL {
                 project.model.printStatus[result.ocfFileName] = .printed(
@@ -386,6 +375,13 @@ struct LinkingResultsView: View {
 
     var body: some View {
         contentWithKeyboardHandling
+            .safeAreaInset(edge: .top) {
+                if let notice = project.mediaRefreshNotice {
+                    Label(notice, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .padding()
+                }
+            }
             .onReceive(renderQueueManager.$lastCompletedResult.dropFirst(), perform: handleRenderCompletedChange)
             .onReceive(renderQueueManager.$isProcessing.dropFirst(), perform: handleProcessingChange)
             .onReceive(renderQueueManager.$currentItem) { item in
@@ -394,8 +390,11 @@ struct LinkingResultsView: View {
                 }
                 handleCurrentItemChange(item)
             }
-            .task(id: project.model.lastModified) {
+            .task {
                 while !Task.isCancelled {
+                    let previous = project.model.lastModified
+                    _ = await project.refreshGradedMedia()
+                    if project.model.lastModified != previous { projectManager.saveProject(project) }
                     await refreshModifiedJobs()
                     try? await Task.sleep(for: .seconds(30))
                 }

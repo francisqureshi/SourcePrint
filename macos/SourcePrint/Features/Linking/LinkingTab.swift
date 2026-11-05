@@ -9,7 +9,7 @@ import SwiftUI
 import SourcePrintCore
 
 struct LinkingTab: View {
-    let project: ProjectViewModel
+    @ObservedObject var project: ProjectViewModel
     @EnvironmentObject var projectManager: ProjectManager
     @Environment(StatusBarViewModel.self) private var statusBarVM
     @State private var isLinking = false
@@ -28,6 +28,9 @@ struct LinkingTab: View {
             )
             .environmentObject(projectManager)
         }
+        .onChange(of: project.model.segments.map(\.analyzedFingerprint)) { _, _ in
+            generateTimelineVisualizationFromExistingData()
+        }
         .onAppear {
             generateTimelineVisualizationFromExistingData()
             project.performLinkingCallback = performLinking
@@ -43,6 +46,7 @@ struct LinkingTab: View {
     private func generateTimelineVisualizationFromExistingData() {
         guard let linkingResult = project.model.linkingResult else { return }
 
+        let revision = project.model.segments.map(\.analyzedFingerprint)
         Task {
             var visualizationResults: [String: TimelineVisualization] = [:]
 
@@ -59,6 +63,7 @@ struct LinkingTab: View {
             }
 
             await MainActor.run {
+                guard project.model.segments.map(\.analyzedFingerprint) == revision else { return }
                 timelineVisualizationData = visualizationResults
             }
         }
@@ -80,6 +85,11 @@ struct LinkingTab: View {
         )
 
         Task {
+            guard await project.refreshGradedMedia() else {
+                isLinking = false
+                statusBarVM.completeOperation(summary: "Media needs attention before linking")
+                return
+            }
             await MainActor.run {
                 statusBarVM.updateLinkingProgress(
                     currentFile: 0,

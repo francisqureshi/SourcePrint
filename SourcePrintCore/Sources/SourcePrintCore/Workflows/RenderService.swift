@@ -37,6 +37,14 @@ public class RenderService {
 
         NSLog("🎬 Starting render for \(parent.ocf.fileName)")
 
+        do {
+            try await SourceMediaRefresh.validateQueuedParent(parent)
+        } catch {
+            return RenderResult(ocfFileName: parent.ocf.fileName, ocfURL: parent.ocf.url,
+                                success: false, error: error.localizedDescription,
+                                duration: Date().timeIntervalSince(startTime), segmentCount: parent.children.count)
+        }
+
         // Step 1: Check/generate blank rush
         let blankRushResult = await ensureBlankRush(for: parent)
 
@@ -54,25 +62,38 @@ public class RenderService {
             )
         }
 
+        // Blank-rush generation can take time; check queued sources again before composition.
+        do {
+            try await SourceMediaRefresh.validateQueuedParent(parent)
+        } catch {
+            return RenderResult(ocfFileName: parent.ocf.fileName, ocfURL: parent.ocf.url,
+                                success: false, error: error.localizedDescription,
+                                duration: Date().timeIntervalSince(startTime), segmentCount: parent.children.count)
+        }
+        let sourceVersions = parent.children.map { RenderOutputFingerprint.capture(at: $0.segment.url) }
+
         // Step 2: Compose video
         let compositionResult = await composeVideo(
             parent: parent,
             blankRushURL: blankRushURL
         )
 
+        let sourcesChanged = zip(parent.children, sourceVersions).contains {
+            RenderOutputFingerprint.capture(at: $0.0.segment.url) != $0.1
+        }
         let totalDuration = Date().timeIntervalSince(startTime)
 
         return RenderResult(
             ocfFileName: parent.ocf.fileName,
             ocfURL: parent.ocf.url,
-            success: compositionResult.success && !Task.isCancelled,
+            success: compositionResult.success && !Task.isCancelled && !sourcesChanged,
             outputURL: compositionResult.url,
-            error: Task.isCancelled ? "Render cancelled" : compositionResult.error,
+            error: Task.isCancelled ? "Render cancelled" : sourcesChanged ? "A graded source changed during rendering. Refresh and render again." : compositionResult.error,
             duration: totalDuration,
             segmentCount: parent.children.count,
             blankRushURL: blankRushURL,
             cancelled: Task.isCancelled,
-            outputFingerprint: compositionResult.success && !Task.isCancelled
+            outputFingerprint: compositionResult.success && !Task.isCancelled && !sourcesChanged
                 ? compositionResult.url.flatMap { RenderOutputFingerprint.capture(at: $0) } : nil
         )
     }

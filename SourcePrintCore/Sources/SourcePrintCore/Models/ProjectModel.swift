@@ -23,6 +23,7 @@ public struct ProjectModel: Codable, Identifiable {
     public var lastPrintDate: Date?
     public var printHistory: [PrintRecord]
     public var printStatus: [String: PrintStatus]
+    public var invalidatedRenderURLs: Set<URL> = []
 
     // MARK: - Manual Link Overrides
     /// Manual user overrides for low confidence matches
@@ -168,6 +169,7 @@ public struct ProjectModel: Codable, Identifiable {
         case lastPrintDate
         case printHistory
         case printStatus
+        case invalidatedRenderURLs
         case manualLinkOverrides
         case publishDirectory
         case publishHistory
@@ -202,6 +204,7 @@ public struct ProjectModel: Codable, Identifiable {
         lastPrintDate = try container.decodeIfPresent(Date.self, forKey: .lastPrintDate)
         printHistory = try container.decode([PrintRecord].self, forKey: .printHistory)
         printStatus = try container.decode([String: PrintStatus].self, forKey: .printStatus)
+        invalidatedRenderURLs = try container.decodeIfPresent(Set<URL>.self, forKey: .invalidatedRenderURLs) ?? []
         // Decode manual link overrides with default for old files
         manualLinkOverrides = try container.decodeIfPresent([String: String].self, forKey: .manualLinkOverrides) ?? [:]
         publishDirectory = try container.decodeIfPresent(URL.self, forKey: .publishDirectory)

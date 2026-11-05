@@ -32,6 +32,9 @@ extension AVRational: Codable {
 
 // MARK: - Media File Information
 public struct MediaFileInfo: Codable {
+    /// File identity at analysis time; nil in older projects forces a fresh probe.
+    public var analyzedFingerprint: RenderOutputFingerprint?
+
     public let fileName: String
     public let url: URL
     public let resolution: Resolution?  // Coded resolution (actual pixel dimensions)
@@ -232,6 +235,7 @@ public class MediaAnalyzer {
     public init() {}
 
     public func analyzeMediaFile(at url: URL, type: MediaType) async throws -> MediaFileInfo {
+        let fingerprintBefore = RenderOutputFingerprint.capture(at: url)
         // Extract properties using SwiftFFmpeg - no fallbacks, only real data
         var resolution: Resolution? = nil
         var displayResolution: Resolution? = nil
@@ -440,7 +444,7 @@ public class MediaAnalyzer {
         let fileNameLower = fileName.lowercased()
         let reelNameLower = reelName?.lowercased()
 
-        return MediaFileInfo(
+        var info = MediaFileInfo(
             fileName: fileName,
             url: url,
             resolution: resolution,
@@ -462,6 +466,11 @@ public class MediaAnalyzer {
             fileNameLower: fileNameLower,
             reelNameLower: reelNameLower
         )
+        guard let fingerprintBefore, fingerprintBefore == RenderOutputFingerprint.capture(at: url) else {
+            throw CocoaError(.fileReadUnknown, userInfo: [NSLocalizedDescriptionKey: "File changed during analysis: \(url.lastPathComponent). Try again once copying has finished."])
+        }
+        info.analyzedFingerprint = fingerprintBefore
+        return info
     }
 
     private func calculateEndTimecode(startTimecode: String, frameRate: Float, durationFrames: Int64) -> String? {

@@ -16,6 +16,64 @@ import SwiftUI
 class ProjectViewModel: ObservableObject, Codable, Identifiable, WatchFolderDelegate {
 
     @Published var isPublishing = false
+    @Published var mediaRefreshNotice: String?
+    private var relinkAfterMediaRefresh = false
+    private var mediaRefreshTask: Task<Bool, Never>?
+
+    @MainActor
+    func refreshGradedMedia() async -> Bool {
+        if let task = mediaRefreshTask { return await task.value }
+        let task = Task { @MainActor in
+            let snapshot = model.segments
+            let previousNotice = mediaRefreshNotice
+            var changed = false
+            var failures: [String] = []
+            for original in snapshot {
+                do {
+                    let refreshed = try await SourceMediaRefresh.refresh(original)
+                    guard let index = model.segments.firstIndex(where: { $0.url == original.url }) else { continue }
+                    if refreshed.analyzedFingerprint != original.analyzedFingerprint {
+                        let metadataChanged = refreshed.durationInFrames != original.durationInFrames || refreshed.sourceTimecode != original.sourceTimecode || refreshed.resolution != original.resolution || refreshed.frameRateFloat != original.frameRateFloat
+                        if original.analyzedFingerprint != nil || metadataChanged {
+                            for parent in model.linkingResult?.ocfParents ?? [] where parent.children.contains(where: { $0.segment.url == original.url }) {
+                                model.invalidatedRenderURLs.insert(parent.ocf.url)
+                                if case .printed(let date, _) = model.printStatus[parent.ocf.fileName] {
+                                    model.printStatus[parent.ocf.fileName] = .needsReprint(lastPrintDate: date, reason: .segmentModified)
+                                }
+                            }
+                        }
+                        var replacement = refreshed
+                        replacement.isVFXShot = model.segments[index].isVFXShot
+                        model.segments[index] = replacement
+                        if metadataChanged {
+                            model.manualLinkOverrides.removeValue(forKey: original.fileName)
+                        }
+                        changed = true
+                    }
+                } catch {
+                    failures.append("\(original.fileName): \(error.localizedDescription)")
+                }
+            }
+            if !failures.isEmpty {
+                relinkAfterMediaRefresh = relinkAfterMediaRefresh || model.linkingResult != nil
+                model.linkingResult = nil
+                mediaRefreshNotice = "Could not refresh media. Finish copying or reconnect the files, then link again. " + failures.joined(separator: "\n")
+            } else {
+                mediaRefreshNotice = nil
+                if (changed && model.linkingResult != nil) || relinkAfterMediaRefresh {
+                    relinkAfterMediaRefresh = false
+                    updateLinkingResult(SegmentOCFLinker().linkSegments(model.segments,
+                        withOCFParents: model.ocfFiles, manualOverrides: model.manualLinkOverrides))
+                }
+            }
+            if changed || previousNotice != mediaRefreshNotice { model.updateModified() }
+            return failures.isEmpty
+        }
+        mediaRefreshTask = task
+        let success = await task.value
+        mediaRefreshTask = nil
+        return success
+    }
 
     // MARK: - File Format Version
 
