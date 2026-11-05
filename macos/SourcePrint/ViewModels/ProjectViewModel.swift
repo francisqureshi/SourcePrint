@@ -16,7 +16,10 @@ import SwiftUI
 class ProjectViewModel: ObservableObject, Codable, Identifiable {
 
     @Published var isPublishing = false
-    @Published var mediaRefreshNotice: String?
+    @Published var mediaRefreshNotice: String? {
+        didSet { mediaRefreshDetails = [] }
+    }
+    @Published var mediaRefreshDetails: [String] = []
     @Published var mediaReviewURLs: Set<URL> = []
     @Published var mediaReviewRequestID: UUID?
     @Published var unavailableGradeURLs: Set<URL> = []
@@ -31,6 +34,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable {
             let previousNotice = mediaRefreshNotice
             var changed = false
             var failures: [String] = []
+            var offlineCount = 0
             var unavailable: Set<URL> = []
             for original in snapshot {
                 do {
@@ -57,14 +61,28 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable {
                     }
                 } catch {
                     unavailable.insert(original.url)
-                    failures.append("\(original.fileName): \(error.localizedDescription)")
+                    let nsError = error as NSError
+                    if nsError.domain == NSCocoaErrorDomain &&
+                        (nsError.code == NSFileReadNoSuchFileError || nsError.code == NSFileNoSuchFileError) {
+                        offlineCount += 1
+                    } else {
+                        failures.append("\(original.fileName): \(error.localizedDescription)")
+                    }
                 }
             }
             unavailableGradeURLs = unavailable
-            if !failures.isEmpty {
+            if !unavailable.isEmpty {
                 relinkAfterMediaRefresh = relinkAfterMediaRefresh || model.linkingResult != nil
                 model.linkingResult = nil
-                mediaRefreshNotice = "Could not refresh media. Finish copying or reconnect the files, then link again. " + failures.joined(separator: "\n")
+                var messages: [String] = []
+                if offlineCount > 0 {
+                    messages.append("\(offlineCount) \(offlineCount == 1 ? "clip is" : "clips are") offline. Reconnect the files before linking.")
+                }
+                if !failures.isEmpty {
+                    messages.append("\(failures.count) \(failures.count == 1 ? "clip could" : "clips could") not be read. Review the details before linking.")
+                }
+                mediaRefreshNotice = messages.joined(separator: " ")
+                mediaRefreshDetails = failures
             } else {
                 mediaRefreshNotice = nil
                 if (changed && model.linkingResult != nil) || relinkAfterMediaRefresh {
@@ -74,7 +92,7 @@ class ProjectViewModel: ObservableObject, Codable, Identifiable {
                 }
             }
             if changed || previousNotice != mediaRefreshNotice { model.updateModified() }
-            return failures.isEmpty
+            return unavailable.isEmpty
         }
         mediaRefreshTask = task
         let success = await task.value

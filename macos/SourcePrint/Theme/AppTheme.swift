@@ -160,3 +160,27 @@ struct CompressorProgressViewStyle: ProgressViewStyle {
     }
 }
 
+
+/// Keeps availability notices compact; only unusual read failures need per-file details.
+struct MediaRefreshNoticeView: View {
+    let notice: String
+    let details: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(notice, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            if !details.isEmpty {
+                DisclosureGroup("Details") {
+                    ScrollView {
+                        Text(details.joined(separator: "\n"))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 120)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

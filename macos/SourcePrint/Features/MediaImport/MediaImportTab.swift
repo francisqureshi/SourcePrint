@@ -86,8 +86,7 @@ struct MediaImportTab: View {
             }
 
             if let notice = project.mediaRefreshNotice {
-                Label(notice, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                MediaRefreshNoticeView(notice: notice, details: project.mediaRefreshDetails)
                     .padding(.horizontal)
             }
 

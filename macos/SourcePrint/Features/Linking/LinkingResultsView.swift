@@ -557,8 +557,7 @@ struct LinkingResultsView: View {
             .sheet(item: $pendingReview) { review in sourceChangesSheet(review) }
             .safeAreaInset(edge: .top) {
                 if let notice = project.mediaRefreshNotice {
-                    Label(notice, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                    MediaRefreshNoticeView(notice: notice, details: project.mediaRefreshDetails)
                         .padding()
                 }
             }
