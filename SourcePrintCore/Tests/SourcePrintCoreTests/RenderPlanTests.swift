@@ -16,6 +16,36 @@ final class RenderPlanTests: XCTestCase {
         OCFParent(ocf: file("OCF.mov", start: 90000, frames: 1000, fps: fps),
             children: files.map { LinkedSegment(segment: $0, linkConfidence: .high, linkMethod: "test") })
     }
+    func testBlankAvailabilityReadsPublishedCoverageWithoutCreatingCaches() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let partial = parent([file("grade.mov", start: 90100, frames: 800)])
+        let missing = await BlankRushAvailability.inspect(parent: partial, directory: root)
+        XCTAssertEqual(missing, .missing)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+        let full = await BlankRushAvailability.inspect(parent: parent([file("full.mov", start: 90000, frames: 1000)]), directory: root)
+        XCTAssertEqual(full, .notRequired)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+        let cache = try BlankRangeCache(root: root, ocf: partial.ocf, plan: RenderPlan(parent: partial))
+        var entries: [BlankRangeCache.Entry] = []
+        for (index, range) in [0..<100, 900..<1000].enumerated() {
+            let url = cache.directory.appendingPathComponent("gap-\(index).mov")
+            try Data([1, 2, 3]).write(to: url)
+            entries.append(.init(start: range.lowerBound, end: range.upperBound, file: url.lastPathComponent,
+                                 fingerprint: try XCTUnwrap(RenderOutputFingerprint.capture(at: url))))
+        }
+        try JSONEncoder().encode(entries).write(to: cache.directory.appendingPathComponent("ranges.json"))
+        let ready = await BlankRushAvailability.inspect(parent: partial, directory: root)
+        XCTAssertEqual(ready, .segments(count: 2, frames: 200, directory: cache.directory))
+        // A revision exposing additional frames must no longer claim readiness.
+        let revised = parent([file("grade.mov", start: 90200, frames: 700)])
+        let incomplete = await BlankRushAvailability.inspect(parent: revised, directory: root)
+        XCTAssertEqual(incomplete, .partial(missingFrames: 100))
+        try FileManager.default.removeItem(at: cache.directory.appendingPathComponent(entries[0].file))
+        let removed = await BlankRushAvailability.inspect(parent: partial, directory: root)
+        XCTAssertEqual(removed, .partial(missingFrames: 100))
+    }
+
     func testExactFullGradeCopiesButMultipleGradesAssemble() throws {
         let full = file("full.mov", start: 90000, frames: 1000)
         XCTAssertEqual(try RenderPlan(parent: parent([full])).copySource, full.url)
