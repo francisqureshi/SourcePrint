@@ -17,10 +17,7 @@
 <li>See the frame count of each linked graded segment directly in the linking view.</li>
 <li>See the exact OCF end-frame number at the right edge of every timeline ruler.</li>
 </ul>
-<h3>Rendering</h3>
-<ul>
-<li>This release retains the existing full blank-rush workflow. The new blank-gap cache renderer is still in review.</li>
-</ul>
+
 
                 <h2>v0.4.2</h2>
                 <ul>
