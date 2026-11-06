@@ -32,7 +32,7 @@ final class BlankRangeCache {
     private(set) var generatedFrames = 0
     private(set) var reusedFrames = 0
 
-    init(root: URL, ocf: MediaFileInfo, plan: RenderPlan) throws {
+    init(root: URL, ocf: MediaFileInfo, plan: RenderPlan, createDirectory: Bool = true) throws {
         self.ocf = ocf
         self.plan = plan
         let identity = Identity(version: 1, source: ocf.url.standardizedFileURL.resolvingSymlinksInPath().path,
@@ -44,7 +44,7 @@ final class BlankRangeCache {
         encoder.outputFormatting = [.sortedKeys]
         let key = SHA256.hash(data: try encoder.encode(identity)).map { String(format: "%02x", $0) }.joined()
         directory = root.appendingPathComponent("GapCache-v1", isDirectory: true).appendingPathComponent(key, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        if createDirectory { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
         reloadEntries()
     }
 
@@ -58,6 +58,21 @@ final class BlankRangeCache {
                 RenderOutputFingerprint.capture(at: directory.appendingPathComponent($0.file)) == $0.fingerprint
             }
         }
+    }
+
+    /// Inspect only published, fingerprint-valid entries without creating cache files.
+    func coveredFiles(for gaps: [Range<Int>]) -> Set<String>? {
+        var files = Set<String>()
+        for gap in gaps {
+            var cursor = gap.lowerBound
+            while cursor < gap.upperBound {
+                guard let entry = entries.filter({ $0.start <= cursor && $0.end > cursor })
+                    .max(by: { $0.end < $1.end }) else { return nil }
+                files.insert(entry.file)
+                cursor = min(entry.end, gap.upperBound)
+            }
+        }
+        return files
     }
 
     /// One transaction per cache identity; independent ranges share a global two-worker limit.
@@ -259,4 +274,24 @@ private actor BlankGenerationProgress {
         await callback?(name, Double(counts.values.reduce(0, +)), Double(total), 0)
     }
     func close() { closed = true }
+}
+
+/// Current blank-media coverage for the linking card, including reopened projects.
+public enum BlankRushAvailability: Equatable {
+    case missing
+    case notRequired
+    case full(URL)
+    case segments(count: Int, frames: Int, directory: URL)
+
+    public static func inspect(parent: OCFParent, directory: URL) async -> BlankRushAvailability {
+        guard let plan = try? RenderPlan(parent: parent) else { return .missing }
+        if plan.gaps.isEmpty { return .notRequired }
+        guard let cache = try? BlankRangeCache(root: directory, ocf: parent.ocf, plan: plan, createDirectory: false) else { return .missing }
+        if let files = cache.coveredFiles(for: plan.gaps) {
+            return .segments(count: files.count, frames: plan.gaps.reduce(0) { $0 + $1.count }, directory: cache.directory)
+        }
+        let name = (parent.ocf.fileName as NSString).deletingPathExtension
+        let full = directory.appendingPathComponent("\(name)_blankRush.mov")
+        return await cache.validFullBlank(at: full) ? .full(full) : .missing
+    }
 }
