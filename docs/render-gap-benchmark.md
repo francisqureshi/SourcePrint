@@ -212,3 +212,27 @@ These XCTest runs use Homebrew FFmpeg 7. The bundled/static-FFmpeg app was separ
 Local raw measurements: /private/tmp/SourcePrint-Stress-6rftjo6o/results.json and warm-results.json. Logs: /tmp/sourceprint-stress-suite.log (initial broad run), /tmp/sourceprint-edge-stress.log and /tmp/sourceprint-regression-suite.log (clean rerun). Completed disposable caches/outputs were cleaned to limit disk usage.
 
 Reproduce the render matrix with SOURCEPRINT_BENCHMARK_ROOT pointing at prepared fixtures, SOURCEPRINT_BENCHMARK_REPEATS=3 and SOURCEPRINT_STRESS_CLEANUP=1, filtering RenderBenchmarkTests. Filter RenderStressTests for the new edge cases; its long test additionally requires long-ocf.mov (the synthetic 7,500-frame 4K fixture) under the benchmark root.
+
+### 20,000-frame / 50-grade edit stress demo (6 November 2026)
+
+Retained disposable Desktop demo, 3840×2160 at 25 fps. Synthetic H.264 OCF provides the timeline; ProRes 4444 solid-colour grades provide finished picture. Baseline has 50 × 200-frame grades spaced every 400 frames, starting at frame 100. Revision shortens ten grades by 50 frames, splits ten into two 90-frame grades with a 20-frame hole, and merges five pairs into 600-frame grades spanning their old gaps. Final count is 55 grades.
+
+| Pass | Render time | Newly generated blank frames | Required blank frames | Cache files |
+|---|---:|---:|---:|---:|
+| Baseline cold | 42.8s | 10,000 | 10,000 | 51 |
+| Baseline unchanged | 6.3s | 0 | 10,000 | 51 |
+| Shorten / split / merge | 13.4s | 700 | 9,700 | 71 |
+| Revised unchanged | 3.2s | 0 | 9,700 | 71 |
+
+All four passes verified 20,000 compressed video packets against their intended grade or cached-blank source, plus output frame count, resolution, FPS and start/end timecode. Existing cache file fingerprints remained unchanged. The revised UI reports **66 blank segments · 9,700 frames**: five old cached files are no longer needed because merged grades cover them. They remain cached for later revisions. No renderer changes were needed. These are single local synthetic runs, not averaged real-footage performance measurements; render timings exclude the subsequent packet-hash verification.
+
+Opt-in test: `HeavyGapDemoTests.testTwentyThousandFramesFiftyGradesAndEdits`. Prepare a fresh disposable directory with `Stress20K.mov` (20,000 frames, 3840×2160, 25 fps, TC 01:00:00:00) and `Fixtures/grade-seed.mov` (one 3840×2160 ProRes 4444 frame at 25 fps), then run:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+PKG_CONFIG_PATH=/opt/homebrew/opt/ffmpeg@7/lib/pkgconfig \
+SOURCEPRINT_HEAVY_DEMO="$DEMO_ROOT" \
+swift test --package-path SourcePrintCore --filter HeavyGapDemoTests
+```
+
+The test retains generated grades, cache, final output, baseline/revised parent metadata and `results.json` for app inspection. It skips directories already containing generated grades or cache to preserve previous demos and the meaning of cold-run assertions.
