@@ -142,12 +142,6 @@ struct TreeLinkedSegmentRowView: View {
                             .background(Color.appBackgroundBadge)
                             .cornerRadius(3)
                     }
-                    if let frames = linkedSegment.segment.durationInFrames {
-                        Text("·")
-                        Text("\(frames.formatted()) frames")
-                            .monospacedDigit()
-                            .fixedSize()
-                    }
                     if let startTC = linkedSegment.segment.sourceTimecode,
                         let endTC = linkedSegment.segment.endTimecode
                     {
@@ -388,12 +382,6 @@ struct LinkedSegmentRowView: View {
                                 .background(Color.appBackgroundBadge)
                                 .cornerRadius(3)
                         }
-                    }
-                    if let frames = linkedSegment.segment.durationInFrames {
-                        Text("·")
-                        Text("\(frames.formatted()) frames")
-                            .monospacedDigit()
-                            .fixedSize()
                     }
                     if let startTC = linkedSegment.segment.sourceTimecode,
                         let endTC = linkedSegment.segment.endTimecode

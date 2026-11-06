@@ -140,9 +140,7 @@ struct CompressorStyleOCFCard: View {
                     mostRecentPrint: project.latestPrintByOCF[parent.ocf.fileName],
                     publishedURL: project.model.publishHistory.last {
                         $0.renderID == project.latestPrintByOCF[parent.ocf.fileName]?.id && $0.state == "published"
-                    }?.destinationURL,
-                    parent: parent,
-                    blankRushDirectory: project.model.blankRushDirectory
+                    }?.destinationURL
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {

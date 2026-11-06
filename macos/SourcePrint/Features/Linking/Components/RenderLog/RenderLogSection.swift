@@ -18,15 +18,10 @@ struct RenderLogSection: View {
     let blankRushStatus: BlankRushStatus
     let mostRecentPrint: SourcePrintCore.PrintRecord?
     var publishedURL: URL? = nil
-    let parent: OCFParent
-    let blankRushDirectory: URL
-    @State private var availability: BlankRushAvailability = .missing
+    @State private var missingBlankRush: BlankRushStatus?
 
-    private var blankRushCheckID: String {
-        // Refresh after rendering, relinking, metadata edits or changing cache folders.
-        let parentData = (try? JSONEncoder().encode(parent)) ?? Data()
-        return parentData.base64EncodedString() + blankRushDirectory.path
-            + String(describing: blankRushStatus) + String(describing: mostRecentPrint?.id)
+    private var actualBlankRushStatus: BlankRushStatus {
+        blankRushStatus == missingBlankRush ? .notCreated : blankRushStatus
     }
 
     var body: some View {
@@ -49,7 +44,7 @@ struct RenderLogSection: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    if case .full(let url) = availability {
+                    if case .completed(_, let url) = actualBlankRushStatus {
                         Button(action: {
                             NSWorkspace.shared.open(url)
                         }) {
@@ -58,13 +53,6 @@ struct RenderLogSection: View {
                         }
                         .buttonStyle(.plain)
                         .help("Open blank rush")
-                    }
-                    if case .segments(_, _, let directory) = availability {
-                        Button { NSWorkspace.shared.open(directory) } label: {
-                            Image(systemName: "folder").foregroundColor(.accentColor)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Show blank rush segments in Finder")
                     }
                 }
 
@@ -126,40 +114,44 @@ struct RenderLogSection: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .task(id: blankRushCheckID) {
-            let result = await Task.detached(priority: .utility) {
-                await BlankRushAvailability.inspect(parent: parent, directory: blankRushDirectory)
+        .task(id: blankRushStatus) {
+            guard case .completed(_, let url) = blankRushStatus else {
+                missingBlankRush = nil
+                return
+            }
+            let exists = await Task.detached(priority: .utility) {
+                FileManager.default.fileExists(atPath: url.path)
             }.value
             guard !Task.isCancelled else { return }
-            availability = result
+            missingBlankRush = exists ? nil : blankRushStatus
         }
     }
 
     // MARK: - Blank Rush Status
 
     private var blankRushStatusText: String {
-        if case .inProgress = blankRushStatus { return "Creating…" }
-        switch availability {
-        case .notRequired: return "Not needed · Fully graded"
-        case .partial(let frames): return "\(frames.formatted()) blank frames needed"
-        case .full: return "Ready · Full blank rush"
-        case .segments(let count, let frames, _):
-            return "\(count) blank \(count == 1 ? "segment" : "segments") · \(frames.formatted()) frames"
-        case .missing:
-            if case .failed(let error) = blankRushStatus { return "Failed: \(error)" }
+        switch actualBlankRushStatus {
+        case .notCreated:
             return "Not Created"
+        case .inProgress:
+            return "Creating..."
+        case .completed:
+            return "Ready"
+        case .failed(let error):
+            return "Failed: \(error)"
         }
     }
 
     private var blankRushStatusColor: Color {
-        if case .inProgress = blankRushStatus { return .orange }
-        switch availability {
-        case .full, .segments: return .green
-        case .notRequired: return .secondary
-        case .partial: return .orange
-        case .missing:
-            if case .failed = blankRushStatus { return .red }
+        switch actualBlankRushStatus {
+        case .notCreated:
             return .secondary
+        case .inProgress:
+            return .orange
+        case .completed:
+            return Color.white.opacity(0.5)
+        case .failed:
+            return .red
         }
     }
 
