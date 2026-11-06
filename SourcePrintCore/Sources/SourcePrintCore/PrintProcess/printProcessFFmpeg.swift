@@ -140,6 +140,56 @@ public class SwiftFFmpegProResCompositor {
         }
     }
 
+    static func isProRes4444(at url: URL) throws -> Bool {
+        let input = try AVFormatContext(url: url.path)
+        try input.findStreamInfo()
+        guard let video = input.streams.first(where: { $0.codecParameters.width > 0 }) else { return false }
+        return video.codecParameters.codecId == AVCodec.findDecoderByName("prores")?.id && video.codecParameters.profile == 4
+    }
+
+    /// Assemble an already resolved, complete frame plan. Only compressed video packets
+    /// are copied, matching the existing compositor's video-only output behaviour.
+    func composeRanges(_ ranges: [ProcessingRange], properties: VideoStreamProperties,
+                       totalFrames: Int, outputURL: URL, headerSource: URL) async throws {
+        var cursor = 0
+        for range in ranges {
+            guard range.startFrame == cursor, range.frameCount > 0 else { throw RenderPlanningError.incompleteMedia }
+            cursor = range.endFrame
+        }
+        guard cursor == totalFrames else { throw RenderPlanningError.incompleteMedia }
+        let input = try AVFormatContext(url: headerSource.path)
+        try input.findStreamInfo()
+        guard let sourceStream = input.streams.first(where: { $0.codecParameters.width > 0 }) else {
+            throw FFmpegCompositorError.noVideoStream
+        }
+        let output = try AVFormatContext(format: nil, filename: outputURL.path)
+        output.metadata["timecode"] = properties.timecode
+        guard let stream = output.addStream() else { throw FFmpegCompositorError.failedToAddStream }
+        // Preserve grade colour and alpha signalling rather than inventing encoder metadata.
+        stream.codecParameters.copy(from: sourceStream.codecParameters)
+        stream.timebase = properties.timebase
+        stream.averageFramerate = properties.frameRate
+        if !output.outputFormat!.flags.contains(.noFile) {
+            try output.openOutput(url: outputURL.path, flags: .write)
+        }
+        try output.writeHeader()
+        let started = CFAbsoluteTimeGetCurrent()
+        for (index, range) in ranges.enumerated() {
+            try Task.checkCancellation()
+            try await copySegmentFramesWithOffset(segment: range.segment, outputContext: output,
+                outputVideoStream: stream, startFrame: range.startFrame, frameCount: range.frameCount,
+                segmentStartOffset: range.segmentStartOffset, baseProperties: properties)
+            let fps = Double(range.endFrame) / max(0.001, CFAbsoluteTimeGetCurrent() - started)
+            let progress = String(format: "%.1f%% @ %.0f fps", Double(range.endFrame) / Double(totalFrames) * 100, fps)
+            await MainActor.run {
+                segmentProgressHandler?(index + 1, ranges.count, range.segment.url.lastPathComponent,
+                    progress, Int64(range.endFrame), totalFrames)
+            }
+        }
+        try Task.checkCancellation()
+        try output.writeTrailer()
+    }
+
     // MARK: - Core SwiftFFmpeg Processing (Based on Blank Rush Patterns)
 
     private func processCompositionFFmpeg(settings: FFmpegCompositorSettings) async throws -> URL {
@@ -744,6 +794,7 @@ public class SwiftFFmpegProResCompositor {
 
         // Bulk copy frames at passthrough speed with consistent timing
         while framesCopied < frameCount {
+            try Task.checkCancellation()
             try baseContext.readFrame(into: packet)
 
             if packet.streamIndex == baseStream.index {
@@ -831,6 +882,7 @@ public class SwiftFFmpegProResCompositor {
 
         // Read and process segment frames
         while framesCopied < frameCount {
+            try Task.checkCancellation()
             do {
                 try segmentContext.readFrame(into: packet)
 
@@ -862,6 +914,8 @@ public class SwiftFFmpegProResCompositor {
                 break
             }
         }
+
+        guard framesCopied == frameCount else { throw RenderPlanningError.incompleteMedia }
 
         let segmentReadEnd = CFAbsoluteTimeGetCurrent()
         let segmentReadTime = segmentReadEnd - segmentReadStart

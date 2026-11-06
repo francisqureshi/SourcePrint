@@ -28,6 +28,7 @@ struct LinkingTab: View {
                 onGenerateBlankRushes: generateBlankRushes,
                 onCancelBlankRushes: cancelBlankRushes
             )
+            .id(project.model.id)
             .environmentObject(projectManager)
         }
         .onChange(of: project.model.segments.map(\.analyzedFingerprint)) { _, _ in

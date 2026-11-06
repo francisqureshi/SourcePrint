@@ -239,6 +239,13 @@ struct LinkingResultsView: View {
                     project.mediaRefreshNotice = "Changed clips no longer match the requested jobs. Review the links before rendering."
                     return
                 }
+                // Resolve directories at render time, including edits made since this view appeared.
+                if !renderQueueManager.isProcessing {
+                    renderQueueManager.configure(with: RenderConfiguration(
+                        blankRushDirectory: project.model.blankRushDirectory,
+                        outputDirectory: project.model.outputDirectory,
+                        proResProfile: "4"))
+                }
                 renderQueueManager.addToQueue(refreshedParents, batchName: batchName)
                 renderQueueManager.startProcessing()
             } catch {

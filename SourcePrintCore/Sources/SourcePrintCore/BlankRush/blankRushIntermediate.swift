@@ -8,6 +8,37 @@
 import Foundation
 import SwiftFFmpeg
 
+// FFmpeg drawtext's font backend crashed under simultaneous graph pulls in the
+// concurrency benchmark. Serialize graph/font access, while leaving independent
+// VideoToolbox encoders and file writes free to run concurrently. Own the graph
+// explicitly for the entire lifetime of its buffer sink.
+private final class BurnInFilterSession {
+    private static let lock = NSLock()
+    private var graph: AVFilterGraph?
+    private var sink: AVFilterContext?
+
+    init(create: () throws -> (AVFilterGraph, AVFilterContext)) throws {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        let pair = try create()
+        graph = pair.0
+        sink = pair.1
+    }
+
+    func getFrame(_ frame: AVFrame) throws {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        try sink!.getFrame(frame)
+    }
+
+    deinit {
+        Self.lock.lock()
+        sink = nil
+        graph = nil
+        Self.lock.unlock()
+    }
+}
+
 // MARK: - Blank Rush Creation
 
 public struct BlankRushResult {
@@ -175,6 +206,25 @@ public class BlankRushIntermediate {
             print("  ❌ Black frame generation failed: \(error)")
             return false
         }
+    }
+
+    /// Generate just an OCF-relative range. Burn-in starts at that range's source timecode.
+    func generateGap(ocf: MediaFileInfo, frames: Range<Int>, outputURL: URL,
+                     progress: ProgressCallback?) throws {
+        guard let rate = ocf.frameRate, let resolution = ocf.effectiveDisplayResolution,
+              let tc = ocf.sourceTimecode, !frames.isEmpty else {
+            throw RenderPlanningError.invalidTimeline
+        }
+        let startTC = try SMPTE(fps: Double(rate.num) / Double(rate.den),
+            dropFrame: ocf.isDropFrame ?? false).addFrames(to: tc, frames: frames.lowerBound)
+        let clipName = (ocf.fileName as NSString).deletingPathExtension
+        let properties = BlankRushVideoProperties(width: Int(resolution.width), height: Int(resolution.height),
+            frameRate: rate, duration: Double(frames.count) * Double(rate.den) / Double(rate.num),
+            sampleAspectRatio: nil, company: nil, finalWidth: Int(resolution.width),
+            finalHeight: Int(resolution.height), timecode: startTC,
+            isDropFrame: ocf.isDropFrame ?? false, clipName: clipName)
+        try generateBlackFramesToProRes(outputPath: outputURL.path, properties: properties,
+            clipName: clipName, progressCallback: progress)
     }
 
     /// Legacy method for path-based black frame generation (for testing)
@@ -466,7 +516,7 @@ public class BlankRushIntermediate {
         )
 
         // Create filter graph for black video generation
-        let (filterGraph, buffersinkCtx) = try createBlackVideoFilterGraph(properties: properties)  //filterGraph IS NEEEDED!! LSP IS WRONG?_
+        let filters = try BurnInFilterSession { try createBlackVideoFilterGraph(properties: properties) }
 
         // Open output file and write header
         if !outputFormatContext.outputFormat!.flags.contains(.noFile) {
@@ -504,6 +554,7 @@ public class BlankRushIntermediate {
         progressBar?.start()
 
         for frameIndex in 0..<totalFrames {
+            try Task.checkCancellation()
             // Update progress bar using modular system or callback
             if let progressBar = progressBar {
                 progressBar.update(current: frameIndex + 1, total: totalFrames)
@@ -527,7 +578,7 @@ public class BlankRushIntermediate {
 
             do {
                 // Pull frame from filter graph
-                try buffersinkCtx.getFrame(filterFrame)
+                try filters.getFrame(filterFrame)
                 frameCount += 1
 
                 // Set proper PTS for filter frame (like straightTranscodeToProRes)
@@ -587,6 +638,8 @@ public class BlankRushIntermediate {
             }
         }
 
+        guard frameCount == totalFrames else { throw RenderPlanningError.incompleteMedia }
+
         // Complete progress bar using modular system
         progressBar?.complete(total: totalFrames)
         
@@ -644,6 +697,9 @@ public class BlankRushIntermediate {
         print(
             "  📈 Final stats: \(frameCount) frames generated, \(encodedPacketCount) packets encoded"
         )
+
+        guard encodedPacketCount == totalFrames else { throw RenderPlanningError.incompleteMedia }
+        try Task.checkCancellation()
 
         // Write trailer
         try outputFormatContext.writeTrailer()
