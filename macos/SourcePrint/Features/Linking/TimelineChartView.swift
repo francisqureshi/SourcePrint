@@ -81,13 +81,23 @@ struct TimelineChartView: View {
             .chartYAxis(.hidden)
             .chartXAxis {
                 AxisMarks(position: .bottom) { value in
-                    if let intValue = value.as(Int.self) {
+                    if let intValue = value.as(Int.self),
+                       intValue < Int(Double(visualizationData.totalFrames) * 0.85) {
                         AxisGridLine()
                         AxisValueLabel {
                             Text("\(intValue)")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
+                    }
+                }
+                // Keep the exact OCF endpoint visible, with its label inside the plot edge.
+                AxisMarks(position: .bottom, values: [visualizationData.totalFrames]) { _ in
+                    AxisGridLine()
+                    AxisValueLabel(anchor: .topTrailing) {
+                        Text(visualizationData.totalFrames.formatted())
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
                     }
                 }
             }
