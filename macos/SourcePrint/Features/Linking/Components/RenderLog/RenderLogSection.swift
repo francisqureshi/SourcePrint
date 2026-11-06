@@ -141,6 +141,7 @@ struct RenderLogSection: View {
         if case .inProgress = blankRushStatus { return "Creating…" }
         switch availability {
         case .notRequired: return "Not needed · Fully graded"
+        case .partial(let frames): return "\(frames.formatted()) blank frames needed"
         case .full: return "Ready · Full blank rush"
         case .segments(let count, let frames, _):
             return "\(count) blank \(count == 1 ? "segment" : "segments") · \(frames.formatted()) frames"
@@ -155,6 +156,7 @@ struct RenderLogSection: View {
         switch availability {
         case .full, .segments: return .green
         case .notRequired: return .secondary
+        case .partial: return .orange
         case .missing:
             if case .failed = blankRushStatus { return .red }
             return .secondary

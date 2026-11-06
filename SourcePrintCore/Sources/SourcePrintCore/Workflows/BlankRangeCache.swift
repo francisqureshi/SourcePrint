@@ -75,6 +75,19 @@ final class BlankRangeCache {
         return files
     }
 
+    func coveredFrameCount(for gaps: [Range<Int>]) -> Int {
+        var count = 0
+        for gap in gaps {
+            var cursor = gap.lowerBound
+            for entry in entries.sorted(by: { $0.start < $1.start }) {
+                let start = max(cursor, entry.start)
+                let end = min(gap.upperBound, entry.end)
+                if start < end { count += end - start; cursor = end }
+            }
+        }
+        return count
+    }
+
     /// One transaction per cache identity; independent ranges share a global two-worker limit.
     func ranges(for requested: Range<Int>, progress: BlankRushIntermediate.ProgressCallback?) async throws -> [ProcessingRange] {
         try await ranges(for: [requested], progress: progress)
@@ -280,6 +293,7 @@ private actor BlankGenerationProgress {
 public enum BlankRushAvailability: Equatable {
     case missing
     case notRequired
+    case partial(missingFrames: Int)
     case full(URL)
     case segments(count: Int, frames: Int, directory: URL)
 
@@ -292,6 +306,9 @@ public enum BlankRushAvailability: Equatable {
         }
         let name = (parent.ocf.fileName as NSString).deletingPathExtension
         let full = directory.appendingPathComponent("\(name)_blankRush.mov")
-        return await cache.validFullBlank(at: full) ? .full(full) : .missing
+        if await cache.validFullBlank(at: full) { return .full(full) }
+        let covered = cache.coveredFrameCount(for: plan.gaps)
+        if covered > 0 { return .partial(missingFrames: plan.gaps.reduce(0) { $0 + $1.count } - covered) }
+        return .missing
     }
 }

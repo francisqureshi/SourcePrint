@@ -40,10 +40,10 @@ final class RenderPlanTests: XCTestCase {
         // A revision exposing additional frames must no longer claim readiness.
         let revised = parent([file("grade.mov", start: 90200, frames: 700)])
         let incomplete = await BlankRushAvailability.inspect(parent: revised, directory: root)
-        XCTAssertEqual(incomplete, .missing)
+        XCTAssertEqual(incomplete, .partial(missingFrames: 100))
         try FileManager.default.removeItem(at: cache.directory.appendingPathComponent(entries[0].file))
         let removed = await BlankRushAvailability.inspect(parent: partial, directory: root)
-        XCTAssertEqual(removed, .missing)
+        XCTAssertEqual(removed, .partial(missingFrames: 100))
     }
 
     func testExactFullGradeCopiesButMultipleGradesAssemble() throws {
