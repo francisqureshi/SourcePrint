@@ -143,7 +143,7 @@ struct RenderLogSection: View {
         case .notRequired: return "Not needed · Fully graded"
         case .full: return "Ready · Full blank rush"
         case .segments(let count, let frames, _):
-            return "\(count) \(count == 1 ? "segment" : "segments") ready · \(frames.formatted()) frames"
+            return "\(count) blank \(count == 1 ? "segment" : "segments") · \(frames.formatted()) frames"
         case .missing:
             if case .failed(let error) = blankRushStatus { return "Failed: \(error)" }
             return "Not Created"
