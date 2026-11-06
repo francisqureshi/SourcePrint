@@ -90,7 +90,11 @@ final class BlankRangeCacheTests: XCTestCase {
         }
         try JSONEncoder().encode(entries).write(to: cache.directory.appendingPathComponent("ranges.json"))
         let warmed = try BlankRangeCache(root: root, ocf: parent.ocf, plan: plan)
+        let directoryBefore = RenderOutputFingerprint.capture(at: warmed.directory)
+        let manifestBefore = try Data(contentsOf: warmed.directory.appendingPathComponent("ranges.json"))
         let ranges = try await warmed.ranges(for: 50..<350, progress: nil)
+        XCTAssertEqual(RenderOutputFingerprint.capture(at: warmed.directory), directoryBefore)
+        XCTAssertEqual(try Data(contentsOf: warmed.directory.appendingPathComponent("ranges.json")), manifestBefore)
         XCTAssertEqual(ranges.map(\.frameCount), [150, 150])
         XCTAssertEqual(ranges.map(\.segmentStartOffset), [50, 0])
         XCTAssertEqual(warmed.generatedFrames, 0)

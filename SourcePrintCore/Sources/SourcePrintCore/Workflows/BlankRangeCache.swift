@@ -127,6 +127,11 @@ final class BlankRangeCache {
                 }
             }
         }
+        // A warm cache is read-only: do not create staging directories or rewrite metadata.
+        if missing.isEmpty {
+            reusedFrames += reused
+            return result.sorted { $0.startFrame < $1.startFrame }
+        }
         let staging = directory.appendingPathComponent(".pending-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
