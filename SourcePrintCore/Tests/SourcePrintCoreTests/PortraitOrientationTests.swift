@@ -70,7 +70,9 @@ final class PortraitOrientationTests: XCTestCase {
     func testRealIPhoneSampleWhenProvided() async throws {
         guard let path = ProcessInfo.processInfo.environment["SOURCEPRINT_IPHONE_SAMPLE"] else { throw XCTSkip("Set SOURCEPRINT_IPHONE_SAMPLE for real-media verification") }
         let info = try await MediaAnalyzer().analyzeMediaFile(at: URL(fileURLWithPath: path), type: .originalCameraFile)
-        XCTAssertEqual(info.resolution, Resolution(width: 3840, height: 2160))
-        XCTAssertEqual(info.effectiveDisplayResolution, Resolution(width: 2160, height: 3840))
+        let width = Int(ProcessInfo.processInfo.environment["SOURCEPRINT_IPHONE_WIDTH"] ?? "3840")!
+        let height = Int(ProcessInfo.processInfo.environment["SOURCEPRINT_IPHONE_HEIGHT"] ?? "2160")!
+        XCTAssertEqual(info.resolution, Resolution(width: width, height: height))
+        XCTAssertEqual(info.effectiveDisplayResolution, Resolution(width: height, height: width))
     }
 }
