@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AVFoundation
 import SwiftFFmpeg
 import TimecodeKit
 
@@ -38,7 +39,7 @@ public struct MediaFileInfo: Codable {
     public let fileName: String
     public let url: URL
     public let resolution: Resolution?  // Coded resolution (actual pixel dimensions)
-    public let displayResolution: Resolution?  // Display resolution (SAR-corrected)
+    public let displayResolution: Resolution?  // Display resolution (SAR-corrected and display-transform oriented)
     public let sampleAspectRatio: String?  // SAR like "139:140"
     public let frameRate: AVRational?  // nil = unknown, direct rational for perfect precision
     public let sourceTimecode: String?
@@ -410,6 +411,19 @@ public class MediaAnalyzer {
             }
         }
 
+        // MOV/MP4 tracks may store landscape pixels with a portrait display matrix.
+        // Keep coded dimensions intact; apply the presentation transform after SAR correction.
+        if let dimensions = displayResolution ?? resolution,
+           ["mov", "mp4", "m4v"].contains(url.pathExtension.lowercased()) {
+            let asset = AVURLAsset(url: url)
+            let tracks = try await asset.loadTracks(withMediaType: .video)
+            if let track = tracks.first {
+                let transform = try await track.load(.preferredTransform)
+                let oriented = Self.orientedResolution(dimensions, transform: transform)
+                if oriented != dimensions { displayResolution = oriented }
+            }
+        }
+
         // MARK: - Pre-Compute Frame Numbers
         // Compute frame numbers once at import to eliminate redundant SMPTE calculations during linking
         var startFrameNumber: Int? = nil
@@ -471,6 +485,15 @@ public class MediaAnalyzer {
         }
         info.analyzedFingerprint = fingerprintBefore
         return info
+    }
+
+    /// Ignore translation: only the transformed bounds affect display dimensions.
+    static func orientedResolution(_ dimensions: Resolution, transform: CGAffineTransform) -> Resolution {
+        let bounds = CGRect(origin: .zero, size: dimensions.cgSize).applying(transform)
+        guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else {
+            return dimensions
+        }
+        return Resolution(width: bounds.width.rounded(), height: bounds.height.rounded())
     }
 
     private func calculateEndTimecode(startTimecode: String, frameRate: Float, durationFrames: Int64) -> String? {

@@ -112,7 +112,7 @@ public class RenderService {
         // Check if blank rush already exists
         if FileManager.default.fileExists(atPath: expectedURL.path) {
             // Verify it's valid
-            let isValid = await isValidBlankRush(at: expectedURL)
+            let isValid = await isValidBlankRush(at: expectedURL, matching: parent.ocf)
             if isValid {
                 NSLog("✅ Using existing blank rush: \(expectedURL.lastPathComponent)")
                 return (true, expectedURL, nil)
@@ -128,12 +128,13 @@ public class RenderService {
     }
 
     /// Validate blank rush file
-    private func isValidBlankRush(at url: URL) async -> Bool {
+    private func isValidBlankRush(at url: URL, matching ocf: MediaFileInfo) async -> Bool {
         // Use MediaAnalyzer to check if file is valid
         let analyzer = MediaAnalyzer()
         do {
-            _ = try await analyzer.analyzeMediaFile(at: url, type: .originalCameraFile)
-            return true
+            let blank = try await analyzer.analyzeMediaFile(at: url, type: .originalCameraFile)
+            return blank.effectiveDisplayResolution == ocf.effectiveDisplayResolution &&
+                blank.durationInFrames == ocf.durationInFrames
         } catch {
             return false
         }
