@@ -27,7 +27,16 @@ final class VFXProcessingTests: XCTestCase {
 
     // MARK: - Test File Validation
 
-    func testTheoryHolidayTestFilesExist() {
+    private func requireTheoryHolidayFixtures() throws {
+        let paths = [TheoryHolidayTestData.ocfPath, TheoryHolidayTestData.gradeSegmentPath,
+                     TheoryHolidayTestData.vfxSegmentPath]
+        guard paths.allSatisfy({ FileManager.default.fileExists(atPath: $0) }) else {
+            throw XCTSkip("Requires external Theory Holiday footage on EVO-POST")
+        }
+    }
+
+    func testTheoryHolidayTestFilesExist() throws {
+        try requireTheoryHolidayFixtures()
         let fileManager = FileManager.default
 
         XCTAssertTrue(
@@ -161,7 +170,9 @@ final class VFXProcessingTests: XCTestCase {
             sourceStartTime: CMTime.zero,
             isVFXShot: false,
             sourceTimecode: "01:00:04:00",
-            frameRate: 25.0
+            frameRate: 25.0,
+            frameRateRational: AVRational(num: 25, den: 1),
+            isDropFrame: false
         )
 
         // VFX1: frames 200-300 (overlaps Grade1)
@@ -172,7 +183,9 @@ final class VFXProcessingTests: XCTestCase {
             sourceStartTime: CMTime.zero,
             isVFXShot: true,
             sourceTimecode: "01:00:08:00",
-            frameRate: 25.0
+            frameRate: 25.0,
+            frameRateRational: AVRational(num: 25, den: 1),
+            isDropFrame: false
         )
 
         // Grade2: frames 250-700 (overlaps both Grade1 and VFX1)
@@ -183,7 +196,9 @@ final class VFXProcessingTests: XCTestCase {
             sourceStartTime: CMTime.zero,
             isVFXShot: false,
             sourceTimecode: "01:00:10:00",
-            frameRate: 25.0
+            frameRate: 25.0,
+            frameRateRational: AVRational(num: 25, den: 1),
+            isDropFrame: false
         )
 
         // VFX2: frames 400-500 (overlaps Grade2)
@@ -194,7 +209,9 @@ final class VFXProcessingTests: XCTestCase {
             sourceStartTime: CMTime.zero,
             isVFXShot: true,
             sourceTimecode: "01:00:16:00",
-            frameRate: 25.0
+            frameRate: 25.0,
+            frameRateRational: AVRational(num: 25, den: 1),
+            isDropFrame: false
         )
 
         let segments = [grade1, vfx1, grade2, vfx2]
@@ -243,6 +260,7 @@ final class VFXProcessingTests: XCTestCase {
     // MARK: - Real World Theory Holiday Test
 
     func testTheoryHolidayFrameOwnershipAnalysis() async throws {
+        try requireTheoryHolidayFixtures()
         print("🧪 Testing Frame Ownership Analysis with real Theory Holiday files...")
 
         // Import actual files
@@ -345,6 +363,7 @@ final class VFXProcessingTests: XCTestCase {
     // MARK: - Print Process Integration Tests
 
     func testTheoryHolidayPrintProcess() async throws {
+        try requireTheoryHolidayFixtures()
         print("🎬 Testing complete print process with Theory Holiday VFX and grade segments...")
 
         // Import actual files
@@ -486,7 +505,9 @@ final class VFXProcessingTests: XCTestCase {
                 sourceStartTime: CMTime.zero,
                 isVFXShot: isVFX,
                 sourceTimecode: nil,
-                frameRate: 25.0
+                frameRate: 25.0,
+                frameRateRational: AVRational(num: 25, den: 1),
+                isDropFrame: false
             )
             segments.append(segment)
         }

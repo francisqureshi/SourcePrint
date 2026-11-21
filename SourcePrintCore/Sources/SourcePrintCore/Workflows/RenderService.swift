@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import CryptoKit
 import Foundation
 
 // MARK: - Render Progress Delegate
@@ -31,8 +32,131 @@ public class RenderService {
 
     // MARK: - Public API
 
-    /// Render an OCF file (generates blank rush if needed, then composes video)
+    /// Render through a validated frame plan. A complete grade is copied unchanged;
+    /// other jobs reuse full blanks or generate only uncached blank frames.
     public func renderOCF(parent: OCFParent) async -> RenderResult {
+        let started = Date()
+        var fullBlankURL: URL?
+        do {
+            try Task.checkCancellation()
+            let sourceURLs = [parent.ocf.url] + parent.children.map { $0.segment.url }
+            let versions = sourceURLs.map { RenderOutputFingerprint.capture(at: $0) }
+            try await SourceMediaRefresh.validateQueuedParent(parent)
+            let refreshedOCF = try await SourceMediaRefresh.refresh(parent.ocf)
+            guard refreshedOCF.durationInFrames == parent.ocf.durationInFrames,
+                  refreshedOCF.sourceTimecode == parent.ocf.sourceTimecode,
+                  refreshedOCF.resolution == parent.ocf.resolution,
+                  refreshedOCF.isDropFrame == parent.ocf.isDropFrame,
+                  refreshedOCF.effectiveDisplayResolution == parent.ocf.effectiveDisplayResolution,
+                  refreshedOCF.frameRate?.num == parent.ocf.frameRate?.num,
+                  refreshedOCF.frameRate?.den == parent.ocf.frameRate?.den else {
+                throw RenderPlanningError.sourceChanged
+            }
+            guard zip(sourceURLs, versions).allSatisfy({ $0.1 != nil && RenderOutputFingerprint.capture(at: $0.0) == $0.1 }) else {
+                throw RenderPlanningError.sourceChanged
+            }
+            let plan = try RenderPlan(parent: parent)
+            let baseName = (parent.ocf.fileName as NSString).deletingPathExtension
+            let outputURL = configuration.outputDirectory.appendingPathComponent("\(baseName).mov")
+            guard !sourceURLs.contains(where: { sameFile($0, outputURL) }) else {
+                throw RenderPlanningError.outputIsSource
+            }
+            if configuration.proResProfile != "4" {
+                return await renderLegacyOCF(parent: parent)
+            }
+            try FileManager.default.createDirectory(at: configuration.outputDirectory, withIntermediateDirectories: true)
+            let temporary = configuration.outputDirectory.appendingPathComponent(".\(UUID().uuidString).mov")
+            defer { try? FileManager.default.removeItem(at: temporary) }
+            for child in parent.children {
+                guard try SwiftFFmpegProResCompositor.isProRes4444(at: child.segment.url) else {
+                    throw RenderPlanningError.invalidSegment(child.segment.fileName + " (expected ProRes 4444)")
+                }
+            }
+            if let source = plan.copySource, source.pathExtension.lowercased() == "mov" {
+                await notifyProgress(ocfFileName: parent.ocf.fileName, status: .compositing,
+                    message: "Copying full-length grade unchanged…")
+                try FileManager.default.copyItem(at: source, to: temporary)
+                try Task.checkCancellation()
+                guard try checksum(source) == checksum(temporary) else { throw RenderPlanningError.incompleteMedia }
+            } else {
+                let cache = try BlankRangeCache(root: configuration.blankRushDirectory, ocf: parent.ocf, plan: plan)
+                var ranges = plan.grades
+                if !plan.gaps.isEmpty {
+                    let existing = configuration.blankRushDirectory.appendingPathComponent("\(baseName)_blankRush.mov")
+                    if await cache.validFullBlank(at: existing) {
+                        fullBlankURL = existing
+                        ranges += plan.gaps.map { cache.range(url: existing, frames: $0, offset: $0.lowerBound) }
+                    } else {
+                        await notifyProgress(ocfFileName: parent.ocf.fileName, status: .generatingBlankRush,
+                            message: "Preparing blank frames…")
+                        ranges += try await cache.ranges(for: plan.gaps, progress: { [weak self] _, current, total, _ in
+                            await self?.notifyProgress(ocfFileName: parent.ocf.fileName, status: .generatingBlankRush,
+                                message: "Creating blank gaps…", currentItemFramesProcessed: Int64(current),
+                                currentItemTotalFrames: Int64(total))
+                        })
+                    }
+                }
+                NSLog("Render plan: %d blank frames generated, %d cached frames reused", cache.generatedFrames, cache.reusedFrames)
+                ranges.sort { $0.startFrame < $1.startFrame }
+                await notifyProgress(ocfFileName: parent.ocf.fileName, status: .compositing,
+                    message: "Assembling graded and blank frames…")
+                let compositor = SwiftFFmpegProResCompositor()
+                compositor.segmentProgressHandler = { [weak self] index, total, name, progress, frames, totalFrames in
+                    Task { @MainActor in
+                        await self?.notifySegmentProgress(ocfFileName: parent.ocf.fileName, currentSegment: index,
+                            totalSegments: total, segmentName: name, progress: progress,
+                            framesProcessed: frames, totalFrames: totalFrames)
+                    }
+                }
+                let rangeVersions = ranges.map { RenderOutputFingerprint.capture(at: $0.segment.url) }
+                try await compositor.composeRanges(ranges, properties: plan.properties,
+                    totalFrames: plan.totalFrames, outputURL: temporary, headerSource: parent.children[0].segment.url)
+                try await cache.validate(url: temporary, frames: 0..<plan.totalFrames)
+                guard zip(ranges, rangeVersions).allSatisfy({ $0.1 != nil && RenderOutputFingerprint.capture(at: $0.0.segment.url) == $0.1 }) else {
+                    throw RenderPlanningError.sourceChanged
+                }
+            }
+            try Task.checkCancellation()
+            guard zip(sourceURLs, versions).allSatisfy({ RenderOutputFingerprint.capture(at: $0.0) == $0.1 }) else {
+                throw RenderPlanningError.sourceChanged
+            }
+            // Atomic replacement within the output directory preserves the previous output on failure.
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                _ = try FileManager.default.replaceItemAt(outputURL, withItemAt: temporary)
+            } else {
+                try FileManager.default.moveItem(at: temporary, to: outputURL)
+            }
+            return RenderResult(ocfFileName: parent.ocf.fileName, ocfURL: parent.ocf.url, success: true,
+                outputURL: outputURL, duration: Date().timeIntervalSince(started), segmentCount: parent.children.count,
+                blankRushURL: fullBlankURL, outputFingerprint: RenderOutputFingerprint.capture(at: outputURL))
+        } catch {
+            return RenderResult(ocfFileName: parent.ocf.fileName, ocfURL: parent.ocf.url, success: false,
+                error: Task.isCancelled ? "Render cancelled" : error.localizedDescription,
+                duration: Date().timeIntervalSince(started), segmentCount: parent.children.count,
+                cancelled: Task.isCancelled || error is CancellationError)
+        }
+    }
+
+    private func sameFile(_ a: URL, _ b: URL) -> Bool {
+        if a.standardizedFileURL.resolvingSymlinksInPath() == b.standardizedFileURL.resolvingSymlinksInPath() { return true }
+        guard let x = try? RenderOutputFingerprint.fileSnapshot(at: a),
+              let y = try? RenderOutputFingerprint.fileSnapshot(at: b) else { return false }
+        return x.device == y.device && x.fingerprint.fileNumber == y.fingerprint.fileNumber
+    }
+
+    private func checksum(_ url: URL) throws -> SHA256.Digest {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hash = SHA256()
+        while let data = try handle.read(upToCount: 4 * 1024 * 1024), !data.isEmpty {
+            try Task.checkCancellation()
+            hash.update(data: data)
+        }
+        return hash.finalize()
+    }
+
+    /// Render an OCF file (generates blank rush if needed, then composes video)
+    func renderLegacyOCF(parent: OCFParent) async -> RenderResult {
         let startTime = Date()
 
         NSLog("🎬 Starting render for \(parent.ocf.fileName)")

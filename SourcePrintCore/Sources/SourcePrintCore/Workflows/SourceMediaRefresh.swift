@@ -99,12 +99,9 @@ public enum SourceMediaRefresh {
     }
 
     public static func refresh(_ file: MediaFileInfo) async throws -> MediaFileInfo {
-        _ = try FileManager.default.attributesOfItem(atPath: file.url.path)
+        let current = try RenderOutputFingerprint.fileSnapshot(at: file.url).fingerprint
         guard FileManager.default.isReadableFile(atPath: file.url.path) else {
             throw CocoaError(.fileReadNoPermission, userInfo: [NSFilePathErrorKey: file.url.path])
-        }
-        guard let current = RenderOutputFingerprint.capture(at: file.url) else {
-            throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: file.url.path])
         }
         if file.analyzedFingerprint == current,
            let resolution = file.resolution, resolution.width > 0, resolution.height > 0,

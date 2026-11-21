@@ -218,8 +218,8 @@ final class WatchFolderServiceTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(newFiles.gradeFiles.count, 2)
-        XCTAssertTrue(newFiles.gradeFiles.contains(file1))
-        XCTAssertTrue(newFiles.gradeFiles.contains(file2))
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == file1.resolvingSymlinksInPath().path })
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == file2.resolvingSymlinksInPath().path })
     }
 
     func testScanForNewFiles_FilterKnownFiles() async throws {
@@ -243,9 +243,9 @@ final class WatchFolderServiceTests: XCTestCase {
 
         // Assert: Should only find clip1 and clip3 (not clip2)
         XCTAssertEqual(newFiles.gradeFiles.count, 2)
-        XCTAssertTrue(newFiles.gradeFiles.contains(file1))
-        XCTAssertTrue(newFiles.gradeFiles.contains(file3))
-        XCTAssertFalse(newFiles.gradeFiles.contains(file2))
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == file1.resolvingSymlinksInPath().path })
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == file3.resolvingSymlinksInPath().path })
+        XCTAssertFalse(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == file2.resolvingSymlinksInPath().path })
     }
 
     func testScanForNewFiles_BothGradeAndVFX() async throws {
@@ -264,8 +264,8 @@ final class WatchFolderServiceTests: XCTestCase {
         // Assert
         XCTAssertEqual(newFiles.gradeFiles.count, 1)
         XCTAssertEqual(newFiles.vfxFiles.count, 1)
-        XCTAssertTrue(newFiles.gradeFiles.contains(gradeFile))
-        XCTAssertTrue(newFiles.vfxFiles.contains(vfxFile))
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == gradeFile.resolvingSymlinksInPath().path })
+        XCTAssertTrue(newFiles.vfxFiles.contains { $0.resolvingSymlinksInPath().path == vfxFile.resolvingSymlinksInPath().path })
     }
 
     func testScanForNewFiles_IgnoresHiddenFiles() async throws {
@@ -283,8 +283,8 @@ final class WatchFolderServiceTests: XCTestCase {
 
         // Assert: Should only find visible file
         XCTAssertEqual(newFiles.gradeFiles.count, 1)
-        XCTAssertTrue(newFiles.gradeFiles.contains(visibleFile))
-        XCTAssertFalse(newFiles.gradeFiles.contains(hiddenFile))
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == visibleFile.resolvingSymlinksInPath().path })
+        XCTAssertFalse(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == hiddenFile.resolvingSymlinksInPath().path })
     }
 
     func testScanForNewFiles_IgnoresNonVideoFiles() async throws {
@@ -304,7 +304,7 @@ final class WatchFolderServiceTests: XCTestCase {
 
         // Assert: Should only find video file
         XCTAssertEqual(newFiles.gradeFiles.count, 1)
-        XCTAssertTrue(newFiles.gradeFiles.contains(videoFile))
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == videoFile.resolvingSymlinksInPath().path })
     }
 
     // MARK: - Integration Tests
@@ -363,6 +363,6 @@ final class WatchFolderServiceTests: XCTestCase {
 
         // Should find clip3 as new
         XCTAssertEqual(newFiles.gradeFiles.count, 1)
-        XCTAssertTrue(newFiles.gradeFiles.contains(file3))
+        XCTAssertTrue(newFiles.gradeFiles.contains { $0.resolvingSymlinksInPath().path == file3.resolvingSymlinksInPath().path })
     }
 }

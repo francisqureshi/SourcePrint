@@ -121,16 +121,23 @@ final class RenderQueueManagerTests: XCTestCase {
         XCTAssertTrue(manager.isProcessing)
     }
 
-    func testStopProcessing() {
-        let parents = [createMockOCFParent(fileName: "OCF001.mov")]
+    func testStopProcessing() async {
+        let parents = [createMockOCFParent(fileName: "OCF001.mov"), createMockOCFParent(fileName: "OCF002.mov")]
         manager.addToQueue(parents)
+        let stopped = expectation(description: "Cancelled queue finishes before restart")
+        delegate.onFinish = { stopped.fulfill() }
 
         manager.startProcessing()
         XCTAssertTrue(manager.isProcessing)
 
         manager.stopProcessing()
+        XCTAssertTrue(manager.isProcessing)
+        XCTAssertTrue(manager.queue.isEmpty)
+        await fulfillment(of: [stopped], timeout: 1)
         XCTAssertFalse(manager.isProcessing)
         XCTAssertNil(manager.currentItem)
+        manager.addToQueue(parents)
+        XCTAssertEqual(manager.queue.count, 2)
     }
 
     // MARK: - Status Update Tests
@@ -197,15 +204,15 @@ final class RenderQueueManagerTests: XCTestCase {
     }
 
     func testDelegate_DidUpdateProgress() async {
+        let received = expectation(description: "Progress forwarded while an item is active")
         let parents = [createMockOCFParent(fileName: "OCF001.mov")]
         manager.addToQueue(parents)
+        delegate.onStart = { manager in
+            manager.updateCurrentItemStatus(.compositing, progress: "Processing...")
+            received.fulfill()
+        }
         manager.startProcessing()
-
-        // Give it a moment to start
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        manager.updateCurrentItemStatus(.compositing, progress: "Processing...")
-
+        await fulfillment(of: [received], timeout: 1)
         XCTAssertTrue(delegate.didUpdateProgress)
         XCTAssertEqual(delegate.lastProgress?.status, .compositing)
         XCTAssertEqual(delegate.lastProgress?.message, "Processing...")
@@ -258,12 +265,14 @@ final class RenderQueueManagerTests: XCTestCase {
         manager.addToQueue(parents)
         XCTAssertEqual(manager.queue.count, 3)
 
+        let started = expectation(description: "First item starts with two queued items")
+        delegate.onStart = { manager in
+            guard manager.currentItem?.ocfFileName == "OCF001.mov" else { return }
+            XCTAssertEqual(manager.queue.count, 2)
+            started.fulfill()
+        }
         manager.startProcessing()
-
-        // First item should be current, others still in queue
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        XCTAssertEqual(manager.currentItem?.ocfFileName, "OCF001.mov")
-        XCTAssertEqual(manager.queue.count, 2) // 2 remaining
+        await fulfillment(of: [started], timeout: 1)
     }
 
     // MARK: - Helper Methods
@@ -295,6 +304,8 @@ final class RenderQueueManagerTests: XCTestCase {
 
 @MainActor
 class MockRenderQueueDelegate: RenderQueueDelegate {
+    var onStart: ((RenderQueueManager) -> Void)?
+    var onFinish: (() -> Void)?
     var didStartItem = false
     var startedItemFileName: String?
 
@@ -314,6 +325,7 @@ class MockRenderQueueDelegate: RenderQueueDelegate {
     func queueManager(_ manager: RenderQueueManager, didStartItem item: RuntimeRenderQueueItem) {
         didStartItem = true
         startedItemFileName = item.ocfFileName
+        onStart?(manager)
     }
 
     func queueManager(_ manager: RenderQueueManager, didUpdateProgress progress: RenderProgress) {
@@ -327,6 +339,7 @@ class MockRenderQueueDelegate: RenderQueueDelegate {
     }
 
     func queueManager(_ manager: RenderQueueManager, didFinishQueue totalCompleted: Int, totalFailed: Int) {
+        onFinish?()
         didFinishQueue = true
         finishedTotalCompleted = totalCompleted
         finishedTotalFailed = totalFailed
